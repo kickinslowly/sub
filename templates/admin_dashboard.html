@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <style>
+        /* Styling for the page */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            padding: 0;
+        }
+
+        header h1 {
+            color: #333;
+        }
+
+        section {
+            margin-top: 20px;
+        }
+
+        .request-card {
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 10px;
+            background-color: #f9f9f9;
+        }
+
+        button {
+            margin-top: 15px;
+            padding: 10px 15px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        /* Link styling */
+        .link-card {
+            border: 1px solid #007BFF;
+            border-radius: 5px;
+            background-color: #E8F4FF;
+            color: #0056b3;
+            padding: 20px;
+            text-align: center;
+            font-size: 18px;
+            text-decoration: none;
+            display: block;
+        }
+
+        .link-card:hover {
+            background-color: #cce5ff;
+            color: #003d7a;
+        }
+
+        #older-requests {
+            display: none; /* Older requests hidden by default */
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Welcome, Admin {{ user['name'] }}</h1>
+    </header>
+
+    <!-- Users section -->
+    <section>
+        <h2>Users</h2>
+        <a href="/manage_users" class="link-card">Click to Manage Users</a>
+    </section>
+
+    <!-- Recent requests section -->
+    <section>
+        <h2>Recent Substitute Requests</h2>
+        {% if recent_requests %}
+            {% for request in recent_requests %}
+                <div class="request-card">
+                    <h3>{{ request.date.strftime('%B %d, %Y') }}</h3>
+                    <p><strong>Teacher ID:</strong> {{ request.teacher_id }}</p>
+                    <p><strong>Time:</strong> {{ request.time }}</p>
+                    <p><strong>Status:</strong> {{ request.status }}</p>
+                    <p><strong>Details:</strong> {{ request.details }}</p>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p>No recent requests available.</p>
+        {% endif %}
+    </section>
+
+    <!-- Toggle button for older requests -->
+    <button id="toggle-older-requests">Show Older Requests</button>
+
+    <!-- Older requests section -->
+    <section id="older-requests">
+        <h2>Older Substitute Requests</h2>
+        {% if older_requests %}
+            {% for request in older_requests %}
+                <div class="request-card">
+                    <h3>{{ request.date.strftime('%B %d, %Y') }}</h3>
+                    <p><strong>Teacher ID:</strong> {{ request.teacher_id }}</p>
+                    <p><strong>Time:</strong> {{ request.time }}</p>
+                    <p><strong>Status:</strong> {{ request.status }}</p>
+                    <p><strong>Details:</strong> {{ request.details }}</p>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p>No older requests available.</p>
+        {% endif %}
+    </section>
+
+    <!-- JavaScript for toggling section visibility -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const olderRequestsSection = document.getElementById('older-requests');
+            const toggleButton = document.getElementById('toggle-older-requests');
+
+            // Ensure both elements exist before proceeding
+            if (toggleButton && olderRequestsSection) {
+                toggleButton.addEventListener('click', function () {
+                    // Toggle visibility of the older requests section
+                    const isHidden = olderRequestsSection.style.display === 'none';
+
+                    if (isHidden) {
+                        olderRequestsSection.style.display = 'block';
+                        toggleButton.innerText = 'Hide Older Requests';
+                    } else {
+                        olderRequestsSection.style.display = 'none';
+                        toggleButton.innerText = 'Show Older Requests';
+                    }
+                });
+            } else {
+                console.error("Toggle button or older requests section is missing!");
+            }
+        });
+    </script>
+</body>
+</html>

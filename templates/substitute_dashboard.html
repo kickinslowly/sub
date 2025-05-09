@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Substitute Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+        .container { max-width: 800px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px; }
+        h1 { color: #2575fc; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        th { background-color: #f4f4f4; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome, {{ user.name }}!</h1>
+        <p>Here are the substitute requests you have accepted:</p>
+
+        {% if accepted_requests %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Teacher</th>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for request, teacher_name in accepted_requests %}
+                <tr>
+                    <td>{{ teacher_name }}</td>
+                    <td>{{ request.date.strftime('%Y-%m-%d') }}</td>
+                    <td>{{ request.time }}</td>
+                    <td>{{ request.details or 'No additional details' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p>No accepted substitute requests yet.</p>
+        {% endif %}
+    </div>
+</body>
+</html>

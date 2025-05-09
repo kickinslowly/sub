@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Users</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+
+        h1, h2 {
+            color: #333;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+
+        table, th, td {
+            border: 1px solid #ccc;
+        }
+
+        th, td {
+            padding: 10px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f5f5f5;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .action-buttons button {
+            padding: 5px 10px;
+            background-color: #007BFF;
+            border: none;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .action-buttons button:hover {
+            background-color: #0056b3;
+        }
+
+        .add-user-container {
+            margin-bottom: 20px;
+        }
+
+        .add-user-container button {
+            padding: 10px 20px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        .add-user-container button:hover {
+            background-color: #218838;
+        }
+
+        .history-btn {
+            padding: 5px 10px;
+            background-color: #6c757d;
+            border: none;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .history-btn:hover {
+            background-color: #5a6268;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.4);
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background-color: #fff;
+            margin: auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 400px;
+            border-radius: 10px;
+        }
+
+        .modal h2 {
+            margin-top: 0;
+        }
+
+        .modal-content form {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-content label {
+            margin-top: 10px;
+        }
+
+        .modal-content input, .modal-content select {
+            padding: 10px;
+            margin-top: 5px;
+        }
+
+        .modal-content button {
+            margin-top: 15px;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .modal-content .submit-btn {
+            background-color: #007BFF;
+            color: #fff;
+        }
+
+        .modal-content .submit-btn:hover {
+            background-color: #0056b3;
+        }
+
+        .modal-content .cancel-btn {
+            background-color: #f44336;
+            color: #fff;
+        }
+
+        .modal-content .cancel-btn:hover {
+            background-color: #d32f2f;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Manage Users</h1>
+    </header>
+
+    <div class="add-user-container">
+        <button id="add-user-btn">Add User</button>
+    </div>
+
+    <div id="add-user-modal" class="modal">
+        <div class="modal-content">
+            <h2>Add User</h2>
+            <form id="add-user-form" method="POST" action="{{ url_for('add_user') }}">
+                <label for="name">Name:</label>
+                <input type="text" id="name" name="name" required>
+
+                <label for="email">Email:</label>
+                <input type="email" id="email" name="email" required>
+
+                <label for="role">Role:</label>
+                <select id="role" name="role">
+                    <option value="teacher">Teacher</option>
+                    <option value="substitute">Substitute</option>
+                </select>
+
+                <label for="grades">Grade:</label>
+                <select id="grades" name="grades">
+                    <option value="" disabled selected>Select Grade</option>
+                    {% for grade in grades %}
+                    <option value="{{ grade.id }}">{{ grade.name }}</option>
+                    {% endfor %}
+                </select>
+
+                <label for="subjects">Subjects (Optional):</label>
+                <select id="subjects" name="subjects" multiple>
+                    {% for subject in subjects %}
+                    <option value="{{ subject.id }}">{{ subject.name }}</option>
+                    {% endfor %}
+                </select>
+
+                <label for="phone">Phone:</label>
+                <input type="text" id="phone" name="phone">
+
+                <div>
+                    <button type="submit" class="submit-btn">Add User</button>
+                    <button type="button" class="cancel-btn" id="cancel-add-user-btn">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <section>
+        <h2>Teachers</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>History</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for teacher in teachers %}
+                <tr>
+                    <td>{{ teacher.id }}</td>
+                    <td>{{ teacher.name }}</td>
+                    <td>{{ teacher.email }}</td>
+                    <td>{{ teacher.role }}</td>
+                    <td>
+                        <a href="{{ url_for('user_profile', user_id=teacher.id) }}" class="history-btn">View History</a>
+                    </td>
+                    <td class="action-buttons">
+                        <button class="edit-btn" data-modal="edit-modal-{{ teacher.id }}">Edit</button>
+                    </td>
+                </tr>
+
+                <div id="edit-modal-{{ teacher.id }}" class="modal">
+                    <div class="modal-content">
+                        <h2>Edit User</h2>
+                        <form method="POST" action="{{ url_for('edit_user', user_id=teacher.id) }}">
+                            <label for="name-{{ teacher.id }}">Name:</label>
+                            <input type="text" id="name-{{ teacher.id }}" name="name" value="{{ teacher.name }}" required>
+
+                            <label for="email-{{ teacher.id }}">Email:</label>
+                            <input type="email" id="email-{{ teacher.id }}" name="email" value="{{ teacher.email }}" required>
+
+                            <label for="role-{{ teacher.id }}">Role:</label>
+                            <select id="role-{{ teacher.id }}" name="role">
+                                <option value="teacher" {% if teacher.role == 'teacher' %}selected{% endif %}>Teacher</option>
+                                <option value="substitute" {% if teacher.role == 'substitute' %}selected{% endif %}>Substitute</option>
+                            </select>
+
+                            <label for="grades-{{ teacher.id }}">Grade:</label>
+                            <select id="grades-{{ teacher.id }}" name="grades">
+                                <option value="" disabled>Select Grade</option>
+                                {% for grade in grades %}
+                                <option value="{{ grade.id }}" {% if grade.id in teacher.grades|map(attribute='id') %}selected{% endif %}>
+                                    {{ grade.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+
+                            <label for="subjects-{{ teacher.id }}">Subjects:</label>
+                            <select id="subjects-{{ teacher.id }}" name="subjects" multiple>
+                                {% for subject in subjects %}
+                                <option value="{{ subject.id }}" {% if subject.id in teacher.subjects|map(attribute='id') %}selected{% endif %}>
+                                    {{ subject.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+
+                            <label for="phone-{{ teacher.id }}">Phone:</label>
+                            <input type="text" id="phone-{{ teacher.id }}" name="phone" value="{{ teacher.phone or '' }}">
+
+                            <div>
+                                <button type="submit" class="submit-btn">Save Changes</button>
+                                <button type="button" class="cancel-btn" data-close="edit-modal-{{ teacher.id }}">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <section>
+        <h2>Substitutes</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>History</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for substitute in substitutes %}
+                <tr>
+                    <td>{{ substitute.id }}</td>
+                    <td>{{ substitute.name }}</td>
+                    <td>{{ substitute.email }}</td>
+                    <td>{{ substitute.role }}</td>
+                    <td>
+                        <a href="{{ url_for('user_profile', user_id=substitute.id) }}" class="history-btn">View History</a>
+                    </td>
+                    <td class="action-buttons">
+                        <button class="edit-btn" data-modal="edit-modal-{{ substitute.id }}">Edit</button>
+                    </td>
+                </tr>
+                <div id="edit-modal-{{ substitute.id }}" class="modal">
+                    <div class="modal-content">
+                        <h2>Edit User</h2>
+                        <form method="POST" action="{{ url_for('edit_user', user_id=substitute.id) }}">
+                            <label for="name-{{ substitute.id }}">Name:</label>
+                            <input type="text" id="name-{{ substitute.id }}" name="name" value="{{ substitute.name }}" required>
+
+                            <label for="email-{{ substitute.id }}">Email:</label>
+                            <input type="email" id="email-{{ substitute.id }}" name="email" value="{{ substitute.email }}" required>
+
+                            <label for="role-{{ substitute.id }}">Role:</label>
+                            <select id="role-{{ substitute.id }}" name="role">
+                                <option value="teacher" {% if substitute.role == 'teacher' %}selected{% endif %}>Teacher</option>
+                                <option value="substitute" {% if substitute.role == 'substitute' %}selected{% endif %}>Substitute</option>
+                            </select>
+
+                            <label for="grades-{{ substitute.id }}">Grade:</label>
+                            <select id="grades-{{ substitute.id }}" name="grades">
+                                <option value="" disabled>Select Grade</option>
+                                {% for grade in grades %}
+                                <option value="{{ grade.id }}" {% if grade.id in substitute.grades|map(attribute='id') %}selected{% endif %}>
+                                    {{ grade.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+
+                            <label for="subjects-{{ substitute.id }}">Subjects:</label>
+                            <select id="subjects-{{ substitute.id }}" name="subjects" multiple>
+                                {% for subject in subjects %}
+                                <option value="{{ subject.id }}" {% if subject.id in substitute.subjects|map(attribute='id') %}selected{% endif %}>
+                                    {{ subject.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+
+                            <label for="phone-{{ substitute.id }}">Phone:</label>
+                            <input type="text" id="phone-{{ substitute.id }}" name="phone" value="{{ substitute.phone or '' }}">
+
+                            <div>
+                                <button type="submit" class="submit-btn">Save Changes</button>
+                                <button type="button" class="cancel-btn" data-close="edit-modal-{{ substitute.id }}">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <script>
+        const addUserBtn = document.getElementById('add-user-btn');
+        const addUserModal = document.getElementById('add-user-modal');
+        const cancelAddUserBtn = document.getElementById('cancel-add-user-btn');
+
+        // Open add user modal
+        addUserBtn.addEventListener('click', () => {
+            addUserModal.style.display = 'flex';
+        });
+
+        // Cancel add user modal
+        cancelAddUserBtn.addEventListener('click', () => {
+            addUserModal.style.display = 'none';
+        });
+
+        // Open and close edit modals
+        document.querySelectorAll('.edit-btn').forEach(button => {
+            button.addEventListener('click', () => {
+                const modalId = button.getAttribute('data-modal');
+                document.getElementById(modalId).style.display = 'flex';
+            });
+        });
+
+        // Close modal on outside click
+        window.addEventListener('click', (event) => {
+            document.querySelectorAll('.modal').forEach(modal => {
+                if (event.target === modal) {
+                    modal.style.display = 'none';
+                }
+            });
+        });
+
+        document.querySelectorAll('.cancel-btn').forEach(button => {
+            button.addEventListener('click', () => {
+                const modalId = button.getAttribute('data-close');
+                const modal = document.getElementById(modalId);
+                modal.style.display = 'none';
+            });
+        });
+    </script>
+</body>
+</html>

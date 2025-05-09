@@ -1,0 +1,46 @@
+{% block content %}
+<div class="container mt-4">
+    <h2>User Profile: {{ user.name }}</h2>
+    
+    <!-- User Information Section -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">User Information</h5>
+            <p><strong>Name:</strong> {{ user.name or 'Not provided' }}</p>
+            <p><strong>Email:</strong> {{ user.email or 'Not provided' }}</p>
+            <p><strong>Phone:</strong> {{ user.phone or 'Not provided' }}</p>
+            <p><strong>Grade:</strong> {{ user.grade or 'Not applicable' }}</p>
+            <p><strong>Subject:</strong> {{ user.subject or 'Not specified' }}</p>
+            <p><strong>Role:</strong> {{ user.role.title() }}</p>
+        </div>
+    </div>
+
+    {% if user.role == 'teacher' and requests %}
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Substitute Requests History</h5>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Time</th>
+                        <th>Status</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for request in requests %}
+                    <tr>
+                        <td>{{ request.date.strftime('%Y-%m-%d') }}</td>
+                        <td>{{ request.time }}</td>
+                        <td>{{ request.status }}</td>
+                        <td>{{ request.details }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
