@@ -161,6 +161,7 @@
         <button id="add-user-btn">Add User</button>
     </div>
 
+    <!-- Add User Modal -->
     <div id="add-user-modal" class="modal">
         <div class="modal-content">
             <h2>Add User</h2>
@@ -177,20 +178,25 @@
                     <option value="substitute">Substitute</option>
                 </select>
 
-                <label for="grades">Grade:</label>
-                <select id="grades" name="grades">
-                    <option value="" disabled selected>Select Grade</option>
+                <label for="grades">Grades:</label>
+                <div id="grades">
                     {% for grade in grades %}
-                    <option value="{{ grade.id }}">{{ grade.name }}</option>
+                    <label>
+                        <input type="checkbox" name="grades" value="{{ grade.id }}">
+                        {{ grade.name }}
+                    </label>
                     {% endfor %}
-                </select>
+                </div>
 
                 <label for="subjects">Subjects (Optional):</label>
-                <select id="subjects" name="subjects" multiple>
+                <div id="subjects">
                     {% for subject in subjects %}
-                    <option value="{{ subject.id }}">{{ subject.name }}</option>
+                    <label>
+                        <input type="checkbox" name="subjects" value="{{ subject.id }}">
+                        {{ subject.name }}
+                    </label>
                     {% endfor %}
-                </select>
+                </div>
 
                 <label for="phone">Phone:</label>
                 <input type="text" id="phone" name="phone">
@@ -203,6 +209,58 @@
         </div>
     </div>
 
+    <!-- Edit User Modal -->
+    <div id="edit-user-modal" class="modal">
+        <div class="modal-content">
+            <h2>Edit User</h2>
+            <form id="edit-user-form" method="POST">
+    <label for="edit-name">Name:</label>
+    <input type="text" id="edit-name" name="name" required>
+
+    <label for="edit-email">Email:</label>
+    <input type="email" id="edit-email" name="email" required>
+
+    <label for="edit-role">Role:</label>
+    <select id="edit-role" name="role">
+        <option value="teacher">Teacher</option>
+        <option value="substitute">Substitute</option>
+    </select>
+
+    <label for="edit-grades">Grades:</label>
+    <div>
+        {% for grade in grades %}
+        <label>
+            <input type="checkbox" value="{{ grade.id }}" name="grades">
+            {{ grade.name }}
+        </label>
+        {% endfor %}
+    </div>
+
+    <label for="edit-subjects">Subjects:</label>
+    <div>
+        {% for subject in subjects %}
+        <label>
+            <input type="checkbox" value="{{ subject.id }}" name="subjects">
+            {{ subject.name }}
+        </label>
+        {% endfor %}
+    </div>
+
+    <label for="edit-phone">Phone:</label>
+    <input type="text" id="edit-phone" name="phone">
+
+    <!-- Hidden input to store user_id -->
+    <input type="hidden" id="edit-user-id" name="user_id">
+
+    <div>
+        <button type="submit" class="submit-btn">Save Changes</button>
+        <button type="button" class="cancel-btn" id="cancel-edit-user-btn">Cancel</button>
+    </div>
+</form>
+        </div>
+    </div>
+
+    <!-- Teachers Section -->
     <section>
         <h2>Teachers</h2>
         <table>
@@ -212,6 +270,9 @@
                     <th>Name</th>
                     <th>Email</th>
                     <th>Role</th>
+                    <th>Phone</th>
+                    <th>Grades</th>
+                    <th>Subjects</th>
                     <th>History</th>
                     <th>Actions</th>
                 </tr>
@@ -223,64 +284,35 @@
                     <td>{{ teacher.name }}</td>
                     <td>{{ teacher.email }}</td>
                     <td>{{ teacher.role }}</td>
+                    <td>{{ teacher.phone or "N/A" }}</td>
+                    <td>
+                        {% for grade in teacher.grades %}
+                        {{ grade.name }}{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                    </td>
+                    <td>
+                        {% for subject in teacher.subjects %}
+                        {{ subject.name }}{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                    </td>
                     <td>
                         <a href="{{ url_for('user_profile', user_id=teacher.id) }}" class="history-btn">View History</a>
                     </td>
                     <td class="action-buttons">
-                        <button class="edit-btn" data-modal="edit-modal-{{ teacher.id }}">Edit</button>
+                        <button class="edit-btn"
+                                data-user-id="{{ teacher.id }}"
+                                data-user-name="{{ teacher.name }}"
+                                data-user-email="{{ teacher.email }}"
+                                data-user-role="{{ teacher.role }}"
+                                data-user-phone="{{ teacher.phone }}">Edit</button>
                     </td>
                 </tr>
-
-                <div id="edit-modal-{{ teacher.id }}" class="modal">
-                    <div class="modal-content">
-                        <h2>Edit User</h2>
-                        <form method="POST" action="{{ url_for('edit_user', user_id=teacher.id) }}">
-                            <label for="name-{{ teacher.id }}">Name:</label>
-                            <input type="text" id="name-{{ teacher.id }}" name="name" value="{{ teacher.name }}" required>
-
-                            <label for="email-{{ teacher.id }}">Email:</label>
-                            <input type="email" id="email-{{ teacher.id }}" name="email" value="{{ teacher.email }}" required>
-
-                            <label for="role-{{ teacher.id }}">Role:</label>
-                            <select id="role-{{ teacher.id }}" name="role">
-                                <option value="teacher" {% if teacher.role == 'teacher' %}selected{% endif %}>Teacher</option>
-                                <option value="substitute" {% if teacher.role == 'substitute' %}selected{% endif %}>Substitute</option>
-                            </select>
-
-                            <label for="grades-{{ teacher.id }}">Grade:</label>
-                            <select id="grades-{{ teacher.id }}" name="grades">
-                                <option value="" disabled>Select Grade</option>
-                                {% for grade in grades %}
-                                <option value="{{ grade.id }}" {% if grade.id in teacher.grades|map(attribute='id') %}selected{% endif %}>
-                                    {{ grade.name }}
-                                </option>
-                                {% endfor %}
-                            </select>
-
-                            <label for="subjects-{{ teacher.id }}">Subjects:</label>
-                            <select id="subjects-{{ teacher.id }}" name="subjects" multiple>
-                                {% for subject in subjects %}
-                                <option value="{{ subject.id }}" {% if subject.id in teacher.subjects|map(attribute='id') %}selected{% endif %}>
-                                    {{ subject.name }}
-                                </option>
-                                {% endfor %}
-                            </select>
-
-                            <label for="phone-{{ teacher.id }}">Phone:</label>
-                            <input type="text" id="phone-{{ teacher.id }}" name="phone" value="{{ teacher.phone or '' }}">
-
-                            <div>
-                                <button type="submit" class="submit-btn">Save Changes</button>
-                                <button type="button" class="cancel-btn" data-close="edit-modal-{{ teacher.id }}">Cancel</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
                 {% endfor %}
             </tbody>
         </table>
     </section>
 
+    <!-- Substitutes Section -->
     <section>
         <h2>Substitutes</h2>
         <table>
@@ -290,6 +322,9 @@
                     <th>Name</th>
                     <th>Email</th>
                     <th>Role</th>
+                    <th>Phone</th>
+                    <th>Grades</th>
+                    <th>Subjects</th>
                     <th>History</th>
                     <th>Actions</th>
                 </tr>
@@ -301,102 +336,84 @@
                     <td>{{ substitute.name }}</td>
                     <td>{{ substitute.email }}</td>
                     <td>{{ substitute.role }}</td>
+                    <td>{{ substitute.phone or "N/A" }}</td>
+                    <td>
+                        {% for grade in substitute.grades %}
+                        {{ grade.name }}{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                    </td>
+                    <td>
+                        {% for subject in substitute.subjects %}
+                        {{ subject.name }}{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                    </td>
                     <td>
                         <a href="{{ url_for('user_profile', user_id=substitute.id) }}" class="history-btn">View History</a>
                     </td>
                     <td class="action-buttons">
-                        <button class="edit-btn" data-modal="edit-modal-{{ substitute.id }}">Edit</button>
+                        <button class="edit-btn"
+                                data-user-id="{{ substitute.id }}"
+                                data-user-name="{{ substitute.name }}"
+                                data-user-email="{{ substitute.email }}"
+                                data-user-role="{{ substitute.role }}"
+                                data-user-phone="{{ substitute.phone }}">Edit</button>
                     </td>
                 </tr>
-                <div id="edit-modal-{{ substitute.id }}" class="modal">
-                    <div class="modal-content">
-                        <h2>Edit User</h2>
-                        <form method="POST" action="{{ url_for('edit_user', user_id=substitute.id) }}">
-                            <label for="name-{{ substitute.id }}">Name:</label>
-                            <input type="text" id="name-{{ substitute.id }}" name="name" value="{{ substitute.name }}" required>
-
-                            <label for="email-{{ substitute.id }}">Email:</label>
-                            <input type="email" id="email-{{ substitute.id }}" name="email" value="{{ substitute.email }}" required>
-
-                            <label for="role-{{ substitute.id }}">Role:</label>
-                            <select id="role-{{ substitute.id }}" name="role">
-                                <option value="teacher" {% if substitute.role == 'teacher' %}selected{% endif %}>Teacher</option>
-                                <option value="substitute" {% if substitute.role == 'substitute' %}selected{% endif %}>Substitute</option>
-                            </select>
-
-                            <label for="grades-{{ substitute.id }}">Grade:</label>
-                            <select id="grades-{{ substitute.id }}" name="grades">
-                                <option value="" disabled>Select Grade</option>
-                                {% for grade in grades %}
-                                <option value="{{ grade.id }}" {% if grade.id in substitute.grades|map(attribute='id') %}selected{% endif %}>
-                                    {{ grade.name }}
-                                </option>
-                                {% endfor %}
-                            </select>
-
-                            <label for="subjects-{{ substitute.id }}">Subjects:</label>
-                            <select id="subjects-{{ substitute.id }}" name="subjects" multiple>
-                                {% for subject in subjects %}
-                                <option value="{{ subject.id }}" {% if subject.id in substitute.subjects|map(attribute='id') %}selected{% endif %}>
-                                    {{ subject.name }}
-                                </option>
-                                {% endfor %}
-                            </select>
-
-                            <label for="phone-{{ substitute.id }}">Phone:</label>
-                            <input type="text" id="phone-{{ substitute.id }}" name="phone" value="{{ substitute.phone or '' }}">
-
-                            <div>
-                                <button type="submit" class="submit-btn">Save Changes</button>
-                                <button type="button" class="cancel-btn" data-close="edit-modal-{{ substitute.id }}">Cancel</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
                 {% endfor %}
             </tbody>
         </table>
     </section>
 
     <script>
+        // Open add user modal
         const addUserBtn = document.getElementById('add-user-btn');
         const addUserModal = document.getElementById('add-user-modal');
         const cancelAddUserBtn = document.getElementById('cancel-add-user-btn');
 
-        // Open add user modal
         addUserBtn.addEventListener('click', () => {
             addUserModal.style.display = 'flex';
         });
 
-        // Cancel add user modal
         cancelAddUserBtn.addEventListener('click', () => {
             addUserModal.style.display = 'none';
         });
 
-        // Open and close edit modals
-        document.querySelectorAll('.edit-btn').forEach(button => {
-            button.addEventListener('click', () => {
-                const modalId = button.getAttribute('data-modal');
-                document.getElementById(modalId).style.display = 'flex';
-            });
-        });
+        // Open edit user modal
+const editButtons = document.querySelectorAll('.edit-btn');
+const editModal = document.getElementById('edit-user-modal');
+const editName = document.getElementById('edit-name');
+const editEmail = document.getElementById('edit-email');
+const editRole = document.getElementById('edit-role');
+const editPhone = document.getElementById('edit-phone');
+const editUserId = document.getElementById('edit-user-id');
+const editUserForm = document.getElementById('edit-user-form'); // Get the form reference
+const cancelEditUserBtn = document.getElementById('cancel-edit-user-btn');
 
-        // Close modal on outside click
-        window.addEventListener('click', (event) => {
-            document.querySelectorAll('.modal').forEach(modal => {
-                if (event.target === modal) {
-                    modal.style.display = 'none';
-                }
-            });
-        });
+editButtons.forEach(button => {
+    button.addEventListener('click', () => {
+        const userId = button.dataset.userId;
+        const userName = button.dataset.userName;
+        const userEmail = button.dataset.userEmail;
+        const userRole = button.dataset.userRole;
+        const userPhone = button.dataset.userPhone;
 
-        document.querySelectorAll('.cancel-btn').forEach(button => {
-            button.addEventListener('click', () => {
-                const modalId = button.getAttribute('data-close');
-                const modal = document.getElementById(modalId);
-                modal.style.display = 'none';
-            });
-        });
+        // Populate form fields with user details
+        editUserId.value = userId;
+        editName.value = userName;
+        editEmail.value = userEmail;
+        editRole.value = userRole;
+        editPhone.value = userPhone;
+
+        // Dynamically set the form action
+        editUserForm.action = `/edit_user/${userId}`;
+
+        editModal.style.display = 'flex';
+    });
+});
+
+cancelEditUserBtn.addEventListener('click', () => {
+    editModal.style.display = 'none';
+});
     </script>
 </body>
 </html>

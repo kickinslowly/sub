@@ -1,46 +1,191 @@
-{% block content %}
-<div class="container mt-4">
-    <h2>User Profile: {{ user.name }}</h2>
-    
-    <!-- User Information Section -->
-    <div class="card mb-4">
-        <div class="card-body">
-            <h5 class="card-title">User Information</h5>
-            <p><strong>Name:</strong> {{ user.name or 'Not provided' }}</p>
-            <p><strong>Email:</strong> {{ user.email or 'Not provided' }}</p>
-            <p><strong>Phone:</strong> {{ user.phone or 'Not provided' }}</p>
-            <p><strong>Grade:</strong> {{ user.grade or 'Not applicable' }}</p>
-            <p><strong>Subject:</strong> {{ user.subject or 'Not specified' }}</p>
-            <p><strong>Role:</strong> {{ user.role.title() }}</p>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Profile - {{ user.name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Roboto', sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+        header {
+            background-color: #2575fc;
+            color: white;
+            padding: 20px 0;
+            margin-bottom: 30px;
+        }
+        header h1 {
+            font-size: 2rem;
+            margin: 0;
+        }
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .card-header {
+            border-radius: 10px 10px 0 0 !important;
+        }
+        .badge {
+            font-size: 0.9rem;
+            padding: 5px 10px;
+        }
+        footer {
+            margin-top: 30px;
+            font-size: 0.9rem;
+            color: #aaa;
+            text-align: center;
+            padding: 20px 0;
+        }
+        .btn-back {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <header class="text-center">
+        <h1>User Profile</h1>
+    </header>
+
+    <div class="container">
+        <a href="javascript:history.back()" class="btn btn-secondary btn-back">← Back</a>
+
+        <h2 class="mb-4">{{ user.name }}</h2>
+
+        <!-- User Information Section -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">User Information</h5>
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Name:</strong> {{ user.name or 'Not provided' }}</p>
+                        <p><strong>Email:</strong> {{ user.email or 'Not provided' }}</p>
+                        <p><strong>Phone:</strong> {{ user.phone or 'Not provided' }}</p>
+                        <p><strong>Role:</strong> <span class="badge {% if user.role == 'teacher' %}bg-primary{% else %}bg-success{% endif %}">{{ user.role.title() }}</span></p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Grades:</strong> 
+                            {% if user.grades %}
+                                {% for grade in user.grades %}
+                                    <span class="badge bg-secondary">{{ grade.name }}</span>
+                                {% endfor %}
+                            {% else %}
+                                <span class="text-muted">Not specified</span>
+                            {% endif %}
+                        </p>
+                        <p><strong>Subjects:</strong> 
+                            {% if user.subjects %}
+                                {% for subject in user.subjects %}
+                                    <span class="badge bg-info text-dark">{{ subject.name }}</span>
+                                {% endfor %}
+                            {% else %}
+                                <span class="text-muted">Not specified</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+            </div>
         </div>
+
+        <!-- Teacher's Substitute Requests Section -->
+        {% if user.role == 'teacher' and requests %}
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">Substitute Requests History</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Time</th>
+                                <th>Status</th>
+                                <th>Substitute</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for request in requests %}
+                            <tr>
+                                <td>{{ request.date.strftime('%Y-%m-%d') }}</td>
+                                <td>{{ request.time }}</td>
+                                <td>
+                                    <span class="badge {% if request.status == 'Open' %}bg-warning{% else %}bg-success{% endif %}">
+                                        {{ request.status }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if request.substitute_user %}
+                                        {{ request.substitute_user.name }}
+                                    {% else %}
+                                        <span class="text-muted">Not assigned</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ request.details or 'No details provided' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Substitute's Accepted Requests Section -->
+        {% if user.role == 'substitute' and requests %}
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <h5 class="card-title mb-0">Accepted Substitute Requests</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Time</th>
+                                <th>Teacher</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for request_tuple in requests %}
+                            <tr>
+                                <td>{{ request_tuple[0].date.strftime('%Y-%m-%d') }}</td>
+                                <td>{{ request_tuple[0].time }}</td>
+                                <td>{{ request_tuple.teacher_name }}</td>
+                                <td>{{ request_tuple[0].details or 'No details provided' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- No Requests Message -->
+        {% if not requests %}
+        <div class="alert alert-info">
+            {% if user.role == 'teacher' %}
+                No substitute requests have been submitted yet.
+            {% elif user.role == 'substitute' %}
+                No substitute requests have been accepted yet.
+            {% endif %}
+        </div>
+        {% endif %}
     </div>
 
-    {% if user.role == 'teacher' and requests %}
-    <div class="card">
-        <div class="card-body">
-            <h5 class="card-title">Substitute Requests History</h5>
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Time</th>
-                        <th>Status</th>
-                        <th>Details</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for request in requests %}
-                    <tr>
-                        <td>{{ request.date.strftime('%Y-%m-%d') }}</td>
-                        <td>{{ request.time }}</td>
-                        <td>{{ request.status }}</td>
-                        <td>{{ request.details }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-    {% endif %}
-</div>
-{% endblock %}
+    <footer>
+        © 2024 Substitute Portal. All Rights Reserved.
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

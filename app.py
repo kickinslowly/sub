@@ -33,14 +33,15 @@ def seed_database():
     """
     # Seed grades
     grades = [
-        {'id': 1, 'name': 'Grade K'},
-        {'id': 2, 'name': 'Grade 1'},
-        {'id': 3, 'name': 'Grade 2'},
-        {'id': 4, 'name': 'Grade 3'},
-        {'id': 5, 'name': 'Grade 4'},
-        {'id': 6, 'name': 'Grade 5'},
-        {'id': 7, 'name': 'Grade Mid'},
-        {'id': 8, 'name': 'Grade High'},
+        {'id': 1, 'name': 'K'},
+        {'id': 2, 'name': '1'},
+        {'id': 3, 'name': '2'},
+        {'id': 4, 'name': '3'},
+        {'id': 5, 'name': '4'},
+        {'id': 6, 'name': '5'},
+        {'id': 7, 'name': 'Mid'},
+        {'id': 8, 'name': 'High'},
+        {'id': 9, 'name': 'All'},
     ]
 
     for grade in grades:
@@ -57,7 +58,7 @@ def seed_database():
         {'id': 5, 'name': 'PE'},
         {'id': 6, 'name': 'Art'},
         {'id': 7, 'name': 'Music'},
-        {'id': 8, 'name': 'Multi'},
+        {'id': 8, 'name': 'All'},
     ]
 
     for subject in subjects:
@@ -145,7 +146,7 @@ def authorized():
             db.session.add(user)
         else:
             # 🚨 Fix: Only update the role if the user is new, NOT if they already exist
-            if not user.role:  # If role is missing (rare case), assign one
+            if not user.role:  # If role is missing (unlikely), assign one
                 user.role = role
 
         db.session.commit()
@@ -153,7 +154,6 @@ def authorized():
         # Store user information in the session
         session['user_info'] = {'email': user.email, 'role': user.role}
 
-        # Debugging log
         print(f"[Debug] Role Assigned: {user.role}, Email: {user.email}")
 
         # Redirect to the correct dashboard based on role
@@ -327,7 +327,13 @@ def manage_users():
     subjects = Subject.query.order_by(Subject.id.asc()).all()
 
     # Render the template, passing the required data
-    return render_template('manage_users.html', teachers=teachers, substitutes=substitutes, grades=grades, subjects=subjects)
+    return render_template(
+        'manage_users.html',
+        teachers=teachers,
+        substitutes=substitutes,
+        grades=grades,
+        subjects=subjects
+    )
 
 
 @app.route('/sub_request/<token>/accept', methods=['POST'])
@@ -355,12 +361,14 @@ def accept_sub_request(token):
 @app.route('/add_user', methods=['POST'])
 def add_user():
     # Get form data
-    name = request.form.get('name')  # Retrieve the name field
-    email = request.form.get('email')  # Retrieve the email field
-    role = request.form.get('role')  # Retrieve the role field
-    phone = request.form.get('phone')  # Retrieve the phone field (can be None)
-    grade_id = request.form.get('grades')  # Retrieve the grade field (optional)
-    subject_ids = request.form.getlist('subjects')  # Retrieve the subject field (optionally multiple)
+    name = request.form.get('name')
+    email = request.form.get('email')
+    role = request.form.get('role')
+    phone = request.form.get('phone')
+
+    # Collect multiple grades and subjects from checkboxes
+    grade_ids = request.form.getlist('grades')  # List of selected grade IDs
+    subject_ids = request.form.getlist('subjects')  # List of selected subject IDs
 
     # Validate required inputs
     if not name or not email or not role:
@@ -378,9 +386,9 @@ def add_user():
         flash('A user with this email already exists!')
         return redirect(url_for('manage_users'))
 
-    # Fetch the grade and subjects if provided
-    grade_obj = Grade.query.filter_by(id=grade_id).first() if grade_id else None
-    subject_objs = Subject.query.filter(Subject.id.in_(subject_ids)).all() if subject_ids else []
+    # Fetch grade and subject objects
+    grade_objs = Grade.query.filter(Grade.id.in_(grade_ids)).all()
+    subject_objs = Subject.query.filter(Subject.id.in_(subject_ids)).all()
 
     # Create the new user
     new_user = User(
@@ -390,11 +398,9 @@ def add_user():
         phone=phone
     )
 
-    # Assign the grade and subjects to the new user
-    if grade_obj:
-        new_user.grades.append(grade_obj)  # Add the grade object to the Many-to-Many relationship
-    if subject_objs:
-        new_user.subjects.extend(subject_objs)  # Add all subject objects to the Many-to-Many relationship
+    # Assign grades and subjects to the new user
+    new_user.grades.extend(grade_objs)  # Add all selected grades
+    new_user.subjects.extend(subject_objs)  # Add all selected subjects
 
     # Add and commit changes to the database
     db.session.add(new_user)
@@ -403,30 +409,58 @@ def add_user():
     # Flash a success message
     flash(f'User {name} ({email}) added successfully!')
 
-    # Redirect back to manage users page
     return redirect(url_for('manage_users'))
 
 
 @app.route('/edit_user/<int:user_id>', methods=['POST'])
 def edit_user(user_id):
+    # Fetch the user from the database
     user = User.query.get_or_404(user_id)
+
+    # Update basic user details
     user.name = request.form['name']
     user.email = request.form['email']
     user.role = request.form['role']
-    user.phone = request.form.get('phone')  # Optional fields
-    user.grade = request.form.get('grade')  # Optional fields
-    user.subject = request.form.get('subject')  # Optional: update the subject
+    user.phone = request.form.get('phone', None)
 
+    # Update grades and subjects
+    grade_ids = request.form.getlist('grades')  # List of selected grade IDs
+    subject_ids = request.form.getlist('subjects')  # List of selected subject IDs
+    grade_objs = Grade.query.filter(Grade.id.in_(grade_ids)).all()
+    subject_objs = Subject.query.filter(Subject.id.in_(subject_ids)).all()
+
+    user.grades = grade_objs
+    user.subjects = subject_objs
+
+    # Save changes to the database
     db.session.commit()
+
+    flash(f"User '{user.name}' updated successfully!")
     return redirect(url_for('manage_users'))
 
 
 @app.route('/user_profile/<int:user_id>')
 def user_profile(user_id):
-    # Query the database for the teacher by ID
+    # Query the database for the user by ID
     user = User.query.get(user_id)
-    # Validate if the user exists and is a teacher
-    if not user or user.role != 'teacher':
-        return "User not found or invalid role", 404
-    # Render a user profile page (replace with a proper template)
-    return render_template('user_profile.html', user=user)
+    # Validate if the user exists
+    if not user:
+        return "User not found", 404
+
+    requests = []
+
+    # If user is a teacher, get all their submitted substitute requests
+    if user.role == 'teacher':
+        requests = SubstituteRequest.query.filter_by(teacher_id=user.id).order_by(SubstituteRequest.date.desc()).all()
+
+    # If user is a substitute, get all their accepted substitute requests
+    elif user.role == 'substitute':
+        # Join with User to get teacher information
+        requests = db.session.query(
+            SubstituteRequest, User.name.label("teacher_name")
+        ).join(User, SubstituteRequest.teacher_id == User.id).filter(
+            SubstituteRequest.substitute_id == user.id
+        ).order_by(SubstituteRequest.date.desc()).all()
+
+    # Render the user profile page with appropriate data
+    return render_template('user_profile.html', user=user, requests=requests)
