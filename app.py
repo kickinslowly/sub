@@ -297,6 +297,9 @@ def view_sub_request(token):
         flash("Invalid or expired request.")
         return redirect(url_for('index'))
 
+    # Fetch the teacher information
+    teacher = User.query.get(sub_request.teacher_id)
+
     # Handle POST request (Accept button click)
     if request.method == 'POST' and sub_request.status == "Open":
         logged_in_user = get_logged_in_user()
@@ -313,7 +316,7 @@ def view_sub_request(token):
         flash("You have successfully accepted the sub request.")
         return redirect(url_for('view_sub_request', token=token))
 
-    return render_template('sub_request.html', sub_request=sub_request)
+    return render_template('sub_request.html', sub_request=sub_request, teacher=teacher)
 
 
 @app.route('/manage_users', methods=['GET'])

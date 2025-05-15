@@ -58,7 +58,7 @@
         }
         .card p {
             font-size: 1rem;
-            color: #666;
+            color: #000;
             margin: 0;
         }
         .booking-list {
@@ -78,12 +78,30 @@
         }
         .booking-item span {
             font-size: 0.9rem;
-            color: #777;
+            color: #000;
         }
         footer {
             margin-top: 30px;
             font-size: 0.9rem;
             color: #aaa;
+        }
+        /* Status indicators */
+        .status-indicator {
+            font-weight: bold;
+            padding: 3px 8px;
+            border-radius: 4px;
+            display: inline-block;
+            margin-left: 5px;
+        }
+
+        .status-filled {
+            background-color: #28a745; /* Green color for filled positions */
+            color: white;
+        }
+
+        .status-open {
+            background-color: #007bff; /* Blue color for open positions */
+            color: white;
         }
     </style>
 </head>
@@ -104,7 +122,16 @@
                 <div class="booking-item">
                     <h3>{{ booking.date.strftime('%B %d, %Y') }}</h3>
                     <span>Time: {{ booking.time }}</span><br>
-                    <span>Status: {{ booking.status }}</span><br>
+                    <span>Status: 
+                        {% if booking.status == "Open" %}
+                        <span class="status-indicator status-open">Open</span>
+                        {% else %}
+                        <span class="status-indicator status-filled">Filled</span>
+                        {% endif %}
+                    </span><br>
+                    {% if booking.status != "Open" and booking.substitute_user %}
+                    <span>Filled by: {{ booking.substitute_user.name }}</span><br>
+                    {% endif %}
                     {% if booking.details %}
                     <p>{{ booking.details }}</p>
                     {% endif %}
