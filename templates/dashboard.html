@@ -121,6 +121,7 @@
                 {% for booking in past_bookings %}
                 <div class="booking-item">
                     <h3>{{ booking.date.strftime('%B %d, %Y') }}</h3>
+                    <span>Request Made: {{ booking.created_at.strftime('%B %d, %Y at %I:%M %p') }}</span><br>
                     <span>Time: {{ booking.time }}</span><br>
                     <span>Status: 
                         {% if booking.status == "Open" %}

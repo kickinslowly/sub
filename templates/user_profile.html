@@ -105,6 +105,7 @@
                             <tr>
                                 <th>Date</th>
                                 <th>Time</th>
+                                <th>Request Made</th>
                                 <th>Status</th>
                                 <th>Substitute</th>
                                 <th>Details</th>
@@ -115,6 +116,7 @@
                             <tr>
                                 <td>{{ request.date.strftime('%Y-%m-%d') }}</td>
                                 <td>{{ request.time }}</td>
+                                <td>{{ request.created_at.strftime('%Y-%m-%d %I:%M %p') }}</td>
                                 <td>
                                     <span class="badge {% if request.status == 'Open' %}bg-warning{% else %}bg-success{% endif %}">
                                         {{ request.status }}
@@ -150,6 +152,7 @@
                             <tr>
                                 <th>Date</th>
                                 <th>Time</th>
+                                <th>Request Made</th>
                                 <th>Teacher</th>
                                 <th>Details</th>
                             </tr>
@@ -159,6 +162,7 @@
                             <tr>
                                 <td>{{ request_tuple[0].date.strftime('%Y-%m-%d') }}</td>
                                 <td>{{ request_tuple[0].time }}</td>
+                                <td>{{ request_tuple[0].created_at.strftime('%Y-%m-%d %I:%M %p') }}</td>
                                 <td>{{ request_tuple.teacher_name }}</td>
                                 <td>{{ request_tuple[0].details or 'No details provided' }}</td>
                             </tr>

@@ -25,6 +25,7 @@
                     <th>Teacher</th>
                     <th>Date</th>
                     <th>Time</th>
+                    <th>Request Made</th>
                     <th>Details</th>
                 </tr>
             </thead>
@@ -34,6 +35,7 @@
                     <td>{{ teacher_name }}</td>
                     <td>{{ request.date.strftime('%Y-%m-%d') }}</td>
                     <td>{{ request.time }}</td>
+                    <td>{{ request.created_at.strftime('%Y-%m-%d %I:%M %p') }}</td>
                     <td>{{ request.details or 'No additional details' }}</td>
                 </tr>
                 {% endfor %}

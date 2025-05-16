@@ -85,6 +85,7 @@
             <p><span class="info-label">Teacher:</span> {{ teacher.name }}</p>
             <p><span class="info-label">Date:</span> {{ sub_request.date.strftime('%B %d, %Y') }}</p>
             <p><span class="info-label">Time:</span> {{ sub_request.time }}</p>
+            <p><span class="info-label">Requested:</span> {{ sub_request.created_at.strftime('%B %d, %Y at %I:%M %p') }}</p>
             {% if sub_request.details %}
             <p><span class="info-label">Details:</span> {{ sub_request.details }}</p>
             {% endif %}

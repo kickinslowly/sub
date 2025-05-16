@@ -1,7 +1,8 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Date, Text
+from sqlalchemy import Column, Integer, String, ForeignKey, Date, Text, DateTime
 from extensions import db  # Use `db` from extensions.py
 from sqlalchemy.orm import relationship
 import uuid  # Import UUID for generating unique tokens
+from datetime import datetime
 
 class Grade(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -49,3 +50,4 @@ class SubstituteRequest(db.Model):
     substitute_id = Column(Integer, ForeignKey('user.id'), nullable=True)
     substitute_user = relationship("User", foreign_keys=[substitute_id])
     token = Column(String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))  # Unique Token
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)  # When the request was made

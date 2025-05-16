@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Users</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -50,6 +51,23 @@
 
         .action-buttons button:hover {
             background-color: #0056b3;
+        }
+
+        .delete-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #6b0f0f; /* Desaturated deep dark red */
+            opacity: 0.8;
+            font-size: 0.8em;
+        }
+
+        .delete-btn i {
+            font-size: 1.5em;
+            margin-bottom: 3px;
         }
 
         .add-user-container {
@@ -260,6 +278,23 @@
         </div>
     </div>
 
+    <!-- Delete User Confirmation Modal -->
+    <div id="delete-user-modal" class="modal">
+        <div class="modal-content">
+            <h2>Confirm Delete</h2>
+            <p>Are you sure you want to remove <span id="delete-user-name"></span>?</p>
+            <p>This action cannot be undone.</p>
+            <form id="delete-user-form" method="POST">
+                <!-- Hidden input to store user_id -->
+                <input type="hidden" id="delete-user-id" name="user_id">
+                <div>
+                    <button type="submit" class="submit-btn">Delete User</button>
+                    <button type="button" class="cancel-btn" id="cancel-delete-user-btn">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Teachers Section -->
     <section>
         <h2>Teachers</h2>
@@ -305,6 +340,12 @@
                                 data-user-email="{{ teacher.email }}"
                                 data-user-role="{{ teacher.role }}"
                                 data-user-phone="{{ teacher.phone }}">Edit</button>
+                        {% if user.role == 'admin' %}
+                        <button class="delete-btn" data-user-id="{{ teacher.id }}" data-user-name="{{ teacher.name }}">
+                            <i class="fas fa-trash-alt"></i>
+                            <span>remove user</span>
+                        </button>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -357,6 +398,12 @@
                                 data-user-email="{{ substitute.email }}"
                                 data-user-role="{{ substitute.role }}"
                                 data-user-phone="{{ substitute.phone }}">Edit</button>
+                        {% if user.role == 'admin' %}
+                        <button class="delete-btn" data-user-id="{{ substitute.id }}" data-user-name="{{ substitute.name }}">
+                            <i class="fas fa-trash-alt"></i>
+                            <span>remove user</span>
+                        </button>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -413,6 +460,34 @@ editButtons.forEach(button => {
 
 cancelEditUserBtn.addEventListener('click', () => {
     editModal.style.display = 'none';
+});
+
+// Delete user functionality
+const deleteButtons = document.querySelectorAll('.delete-btn');
+const deleteModal = document.getElementById('delete-user-modal');
+const deleteUserName = document.getElementById('delete-user-name');
+const deleteUserId = document.getElementById('delete-user-id');
+const deleteUserForm = document.getElementById('delete-user-form');
+const cancelDeleteUserBtn = document.getElementById('cancel-delete-user-btn');
+
+deleteButtons.forEach(button => {
+    button.addEventListener('click', () => {
+        const userId = button.dataset.userId;
+        const userName = button.dataset.userName;
+
+        // Populate modal with user details
+        deleteUserId.value = userId;
+        deleteUserName.textContent = userName;
+
+        // Dynamically set the form action
+        deleteUserForm.action = `/delete_user/${userId}`;
+
+        deleteModal.style.display = 'flex';
+    });
+});
+
+cancelDeleteUserBtn.addEventListener('click', () => {
+    deleteModal.style.display = 'none';
 });
     </script>
 </body>

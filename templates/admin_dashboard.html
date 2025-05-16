@@ -63,7 +63,7 @@
         #older-requests {
             display: none; /* Older requests hidden by default */
         }
-        
+
         /* Status indicators */
         .status-indicator {
             font-weight: bold;
@@ -72,12 +72,12 @@
             display: inline-block;
             margin-left: 5px;
         }
-        
+
         .status-filled {
             background-color: #28a745; /* Green color for filled positions */
             color: white;
         }
-        
+
         .status-open {
             background-color: #007bff; /* Blue color for open positions */
             color: white;
@@ -102,6 +102,7 @@
             {% for request in recent_requests %}
                 <div class="request-card">
                     <h3>{{ request.date.strftime('%B %d, %Y') }}</h3>
+                    <p><strong>Request Made:</strong> {{ request.created_at.strftime('%B %d, %Y at %I:%M %p') }}</p>
                     <p><strong>Teacher ID:</strong> {{ request.teacher_id }}</p>
                     <p><strong>Time:</strong> {{ request.time }}</p>
                     <p><strong>Status:</strong> 
@@ -132,6 +133,7 @@
             {% for request in older_requests %}
                 <div class="request-card">
                     <h3>{{ request.date.strftime('%B %d, %Y') }}</h3>
+                    <p><strong>Request Made:</strong> {{ request.created_at.strftime('%B %d, %Y at %I:%M %p') }}</p>
                     <p><strong>Teacher ID:</strong> {{ request.teacher_id }}</p>
                     <p><strong>Time:</strong> {{ request.time }}</p>
                     <p><strong>Status:</strong> 

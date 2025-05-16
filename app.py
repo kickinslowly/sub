@@ -6,6 +6,8 @@ from helpers import send_email  # Import the send_email helper function
 from extensions import db, mail  # Import the instances
 from models import User, SubstituteRequest, Grade, Subject, user_grades, user_subjects # Import models
 import uuid
+import sqlite3
+import os
 from werkzeug.security import check_password_hash
 
 # Initialize Flask app
@@ -70,9 +72,71 @@ def seed_database():
     db.session.commit()
 
 
+# Function to check and add missing columns
+def update_database_schema():
+    """Check if created_at column exists in substitute_request table and add it if not."""
+    try:
+        # Get the database path from the app config
+        db_uri = app.config['SQLALCHEMY_DATABASE_URI']
+
+        # Handle both relative and absolute paths
+        if db_uri.startswith('sqlite:///'):
+            # Relative path
+            db_path = db_uri.replace('sqlite:///', '')
+            # Make it absolute if it's not already
+            if not os.path.isabs(db_path):
+                db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), db_path)
+        elif db_uri.startswith('sqlite:////'):
+            # Absolute path
+            db_path = db_uri.replace('sqlite:////', '')
+        else:
+            print(f"Unsupported database URI format: {db_uri}")
+            return
+
+        print(f"Using database path: {db_path}")
+
+        # Connect to the SQLite database
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        # Check if the substitute_request table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='substitute_request'")
+        if cursor.fetchone() is None:
+            # Table doesn't exist yet, it will be created by db.create_all()
+            print("substitute_request table doesn't exist yet, skipping schema update")
+            conn.close()
+            return
+
+        # Check if created_at column exists in the substitute_request table
+        cursor.execute("PRAGMA table_info(substitute_request)")
+        columns_info = cursor.fetchall()
+        columns = [column[1] for column in columns_info]
+        print(f"Existing columns in substitute_request: {columns}")
+
+        if 'created_at' not in columns:
+            print("created_at column not found, adding it now...")
+            # Add the created_at column with a default value of current timestamp
+            cursor.execute("ALTER TABLE substitute_request ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+
+            # Update existing records to have a created_at value
+            current_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            cursor.execute(f"UPDATE substitute_request SET created_at = '{current_time}'")
+
+            conn.commit()
+            print("Added created_at column to substitute_request table and updated existing records")
+        else:
+            print("created_at column already exists in substitute_request table")
+
+        conn.close()
+    except Exception as e:
+        print(f"Error updating database schema: {e}")
+        import traceback
+        traceback.print_exc()
+
 # Add the seed function to the database initialization
 with app.app_context():
     db.create_all()  # Create all necessary tables
+    update_database_schema()  # Update the database schema if needed
     seed_database()  # Seed the database with default data
 
 
@@ -321,6 +385,11 @@ def view_sub_request(token):
 
 @app.route('/manage_users', methods=['GET'])
 def manage_users():
+    # Ensure user is authenticated
+    if 'user_info' not in session:
+        flash('Please log in to access this page.')
+        return redirect(url_for('index'))
+
     # Fetch all teachers and substitutes from the database
     teachers = User.query.filter_by(role='teacher').order_by(User.id.asc()).all()
     substitutes = User.query.filter_by(role='substitute').order_by(User.id.asc()).all()
@@ -335,7 +404,8 @@ def manage_users():
         teachers=teachers,
         substitutes=substitutes,
         grades=grades,
-        subjects=subjects
+        subjects=subjects,
+        user=session['user_info']
     )
 
 
@@ -467,3 +537,33 @@ def user_profile(user_id):
 
     # Render the user profile page with appropriate data
     return render_template('user_profile.html', user=user, requests=requests)
+
+
+@app.route('/delete_user/<int:user_id>', methods=['POST'])
+def delete_user(user_id):
+    # Ensure user is authenticated and has admin role
+    if not is_authenticated(required_role='admin'):
+        flash('Access denied. Admins only.')
+        return redirect(url_for('index'))
+
+    # Find the user to delete
+    user = User.query.get_or_404(user_id)
+
+    # Handle substitute requests where this user is a teacher
+    teacher_requests = SubstituteRequest.query.filter_by(teacher_id=user.id).all()
+    for req in teacher_requests:
+        db.session.delete(req)
+
+    # Handle substitute requests where this user is a substitute
+    substitute_requests = SubstituteRequest.query.filter_by(substitute_id=user.id).all()
+    for req in substitute_requests:
+        # Just remove the substitute assignment, don't delete the request
+        req.substitute_id = None
+        req.status = 'Open'
+
+    # Delete the user
+    db.session.delete(user)
+    db.session.commit()
+
+    flash(f"User '{user.name}' has been removed successfully.")
+    return redirect(url_for('manage_users'))
