@@ -260,7 +260,43 @@ def dashboard():
         .order_by(SubstituteRequest.date.desc())
         .all()
     )
-    return render_template('dashboard.html', user=session['user_info'], past_bookings=past_bookings)
+    return render_template('dashboard.html', user=logged_in_user, past_bookings=past_bookings)
+
+
+@app.route('/api/teacher_bookings')
+def api_teacher_bookings():
+    """API endpoint to get teacher bookings for reactive dashboard."""
+    logged_in_user = get_logged_in_user()
+    if not logged_in_user:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    # Get all bookings for the teacher
+    bookings = SubstituteRequest.query.filter_by(teacher_id=logged_in_user.id).order_by(SubstituteRequest.date.desc()).all()
+
+    # Convert bookings to JSON-serializable format
+    bookings_data = []
+    for booking in bookings:
+        booking_data = {
+            "id": booking.id,
+            "date": booking.date.strftime('%Y-%m-%d'),
+            "date_formatted": booking.date.strftime('%B %d, %Y'),
+            "time": booking.time,
+            "status": booking.status,
+            "details": booking.details,
+            "created_at": booking.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            "created_at_formatted": booking.created_at.strftime('%B %d, %Y at %I:%M %p'),
+        }
+
+        # Add substitute info if available
+        if booking.status != "Open" and booking.substitute_user:
+            booking_data["substitute"] = {
+                "id": booking.substitute_user.id,
+                "name": booking.substitute_user.name
+            }
+
+        bookings_data.append(booking_data)
+
+    return jsonify({"bookings": bookings_data})
 
 
 @app.route('/admin_dashboard', methods=['GET'])
@@ -347,6 +383,19 @@ def admin_create_request():
             """
             send_email(subject, substitute.email, email_body)
 
+        # Send notification to admin
+        admin_subject = "New Substitute Request Created"
+        admin_email_body = f"""
+        A new substitute request has been created:
+
+        👨‍🏫 Teacher: {teacher.name}
+        📅 Date: {date}
+        ⏰ Time: {time}
+        📌 Details: {details or 'No additional details provided'}
+        """
+        for admin_email in Config.ADMIN_EMAILS:
+            send_email(admin_subject, admin_email, admin_email_body)
+
         flash('Substitute request created successfully! Notification sent to all substitutes.')
 
     except Exception as e:
@@ -404,6 +453,19 @@ def request_form_and_submit():
                     👉 Accept the request here: {request_link}
                     """
                     send_email(subject, substitute.email, email_body)
+
+                # Send notification to admin
+                admin_subject = "New Substitute Request Created"
+                admin_email_body = f"""
+                A new substitute request has been created:
+
+                👨‍🏫 Teacher: {teacher.name}
+                📅 Date: {date}
+                ⏰ Time: {time}
+                📌 Details: {details or 'No additional details provided'}
+                """
+                for admin_email in Config.ADMIN_EMAILS:
+                    send_email(admin_subject, admin_email, admin_email_body)
 
                 flash('Substitute request submitted successfully! Notification sent.')
             else:
@@ -605,6 +667,84 @@ def user_profile(user_id):
 
     # Render the user profile page with appropriate data
     return render_template('user_profile.html', user=user, requests=requests)
+
+
+@app.route('/edit_request/<int:request_id>', methods=['GET', 'POST'])
+def edit_request(request_id):
+    # Ensure user is authenticated
+    logged_in_user = get_logged_in_user()
+    if not logged_in_user:
+        flash('Please log in to continue.')
+        return redirect(url_for('index'))
+
+    # Get the substitute request
+    sub_request = SubstituteRequest.query.get_or_404(request_id)
+
+    # Ensure the user is the teacher who created the request
+    if sub_request.teacher_id != logged_in_user.id:
+        flash('You can only edit your own substitute requests.')
+        return redirect(url_for('dashboard'))
+
+    # Ensure the request is still open
+    if sub_request.status != 'Open':
+        flash('You can only edit open substitute requests.')
+        return redirect(url_for('dashboard'))
+
+    if request.method == 'GET':
+        # Format the date for the form
+        formatted_date = sub_request.date.strftime('%Y-%m-%d')
+        return render_template('request.html', sub_request=sub_request, formatted_date=formatted_date, edit_mode=True)
+
+    elif request.method == 'POST':
+        try:
+            # Update the substitute request
+            sub_request.date = datetime.strptime(request.form['date'], '%Y-%m-%d')
+            sub_request.time = request.form['time']
+            sub_request.details = request.form.get('details', '').strip()
+
+            # Save changes
+            db.session.commit()
+
+            flash('Substitute request updated successfully!')
+        except Exception as e:
+            flash('An error occurred while updating the request.')
+            print(f"Error: {e}")
+
+        return redirect(url_for('dashboard'))
+
+
+@app.route('/delete_request/<int:request_id>', methods=['POST'])
+def delete_request(request_id):
+    # Ensure user is authenticated
+    logged_in_user = get_logged_in_user()
+    if not logged_in_user:
+        flash('Please log in to continue.')
+        return redirect(url_for('index'))
+
+    # Get the substitute request
+    sub_request = SubstituteRequest.query.get_or_404(request_id)
+
+    # Ensure the user is the teacher who created the request
+    if sub_request.teacher_id != logged_in_user.id:
+        flash('You can only delete your own substitute requests.')
+        return redirect(url_for('dashboard'))
+
+    # Ensure the request is still open
+    if sub_request.status != 'Open':
+        flash('You can only delete open substitute requests.')
+        return redirect(url_for('dashboard'))
+
+    try:
+        # Delete the substitute request
+        db.session.delete(sub_request)
+        db.session.commit()
+
+        flash('Substitute request deleted successfully!')
+    except Exception as e:
+        flash('An error occurred while deleting the request.')
+        print(f"Error: {e}")
+
+    return redirect(url_for('dashboard'))
 
 
 @app.route('/delete_user/<int:user_id>', methods=['POST'])
