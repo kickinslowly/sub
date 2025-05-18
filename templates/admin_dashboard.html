@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard</title>
+    <!-- Flatpickr CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <!-- Flatpickr Time Range CSS -->
+    <link rel="stylesheet" type="text/css" href="https://npmcdn.com/flatpickr/dist/themes/material_blue.css">
     <style>
         /* Styling for the page */
         body {
@@ -82,6 +86,56 @@
             background-color: #007bff; /* Blue color for open positions */
             color: white;
         }
+
+        /* Loading spinner animation */
+        .spinner {
+            display: inline-block;
+            width: 1.5rem;
+            height: 1.5rem;
+            vertical-align: text-bottom;
+            border: 0.2em solid currentColor;
+            border-right-color: transparent;
+            border-radius: 50%;
+            animation: spinner-border .75s linear infinite;
+            margin-right: 0.5rem;
+        }
+
+        @keyframes spinner-border {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Button states */
+        .btn-loading {
+            position: relative;
+            color: transparent !important;
+        }
+
+        .btn-loading .spinner {
+            position: absolute;
+            left: calc(50% - 0.75rem);
+            top: calc(50% - 0.75rem);
+            color: white;
+        }
+
+        /* Toast notification styling */
+        .toast-container {
+            position: fixed;
+            top: 10%;
+            left: 50%;
+            transform: translate(-50%, 0);
+            z-index: 1055;
+        }
+
+        .toast {
+            background-color: #28a745;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            display: none;
+            text-align: center;
+            min-width: 250px;
+        }
     </style>
 </head>
 <body>
@@ -94,6 +148,62 @@
         <h2>Users</h2>
         <a href="/manage_users" class="link-card">Click to Manage Users</a>
     </section>
+
+    <!-- Create substitute request section -->
+    <section>
+        <h2>Create Substitute Request</h2>
+        <div class="request-card">
+            <form id="adminSubRequestForm" method="POST" action="/admin_create_request" onsubmit="handleFormSubmit(event)">
+                <div style="margin-bottom: 15px;">
+                    <label for="teacher_id" style="display: block; margin-bottom: 5px; font-weight: bold;">Teacher:</label>
+                    <select id="teacher_id" name="teacher_id" style="width: 100%; padding: 8px; border-radius: 5px; border: 1px solid #ccc;" required>
+                        <option value="">Select a teacher</option>
+                        {% for teacher in teachers %}
+                        <option value="{{ teacher.id }}">{{ teacher.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div style="margin-bottom: 15px;">
+                    <label for="date" style="display: block; margin-bottom: 5px; font-weight: bold;">Date:</label>
+                    <input type="date" id="date" name="date" style="width: 100%; padding: 8px; border-radius: 5px; border: 1px solid #ccc;" required>
+                </div>
+
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Time Range:</label>
+                    <div style="display: flex; gap: 15px; align-items: center;">
+                        <div style="flex: 1;">
+                            <label for="timeStart" style="display: block; margin-bottom: 5px;">From:</label>
+                            <input type="text" id="timeStart" name="timeStart" style="width: 100%; padding: 8px; border-radius: 5px; border: 1px solid #ccc;" placeholder="Start Time" required>
+                        </div>
+                        <div style="font-weight: bold; color: #555;">to</div>
+                        <div style="flex: 1;">
+                            <label for="timeEnd" style="display: block; margin-bottom: 5px;">To:</label>
+                            <input type="text" id="timeEnd" name="timeEnd" style="width: 100%; padding: 8px; border-radius: 5px; border: 1px solid #ccc;" placeholder="End Time" required>
+                        </div>
+                    </div>
+                    <input type="hidden" id="timeRange" name="time">
+                </div>
+
+                <div style="margin-bottom: 15px;">
+                    <label for="details" style="display: block; margin-bottom: 5px; font-weight: bold;">Details:</label>
+                    <textarea id="details" name="details" style="width: 100%; padding: 8px; border-radius: 5px; border: 1px solid #ccc; height: 80px;" placeholder="Provide any additional information (optional)"></textarea>
+                </div>
+
+                <button id="submitBtn" type="submit" style="background-color: #007BFF; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                    <span class="spinner" style="display: none;"></span>
+                    <span class="btn-text">Create Request</span>
+                </button>
+            </form>
+        </div>
+    </section>
+
+    <!-- Toast Notification -->
+    <div class="toast-container">
+        <div id="toastRequestSubmitted" class="toast">
+            Request submitted successfully! Key stakeholders will be notified.
+        </div>
+    </div>
 
     <!-- Recent requests section -->
     <section>
@@ -154,7 +264,7 @@
         {% endif %}
     </section>
 
-    <!-- JavaScript for toggling section visibility -->
+    <!-- JavaScript for toggling section visibility and form submission -->
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             const olderRequestsSection = document.getElementById('older-requests');
@@ -176,6 +286,119 @@
                 });
             } else {
                 console.error("Toggle button or older requests section is missing!");
+            }
+        });
+
+        // Function to handle form submission with loading state and toast notification
+        function handleFormSubmit(event) {
+            // Prevent default form submission
+            event.preventDefault();
+
+            // Get the submit button and its elements
+            const submitBtn = document.getElementById('submitBtn');
+            const spinner = submitBtn.querySelector('.spinner');
+            const btnText = submitBtn.querySelector('.btn-text');
+
+            // Show loading state
+            submitBtn.classList.add('btn-loading');
+            spinner.style.display = 'inline-block';
+            submitBtn.disabled = true;
+
+            // Update the time range field one last time
+            const startTime = document.getElementById('timeStart').value;
+            const endTime = document.getElementById('timeEnd').value;
+
+            if (startTime && endTime) {
+                document.getElementById('timeRange').value = `${startTime} - ${endTime}`;
+            }
+
+            // Show the toast notification after a short delay to show the loading state
+            setTimeout(() => {
+                // Show the toast notification
+                const toast = document.getElementById('toastRequestSubmitted');
+                toast.style.display = 'block';
+
+                // Delay form submission to allow the toast animation to play
+                setTimeout(() => {
+                    // Reset button state before submitting (for better UX if there's a page refresh)
+                    submitBtn.classList.remove('btn-loading');
+                    spinner.style.display = 'none';
+
+                    // Submit the form
+                    document.getElementById('adminSubRequestForm').submit();
+                }, 1500); // 1.5-second delay after toast shows
+
+                // Hide the toast after 5 seconds (if the page hasn't navigated away)
+                setTimeout(() => {
+                    toast.style.display = 'none';
+                }, 5000);
+            }, 1000); // 1-second delay to show loading state
+        }
+    </script>
+
+    <!-- Flatpickr JS -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script>
+        // Initialize Flatpickr time pickers
+        document.addEventListener('DOMContentLoaded', function() {
+            // Common time picker options
+            const timeOptions = {
+                enableTime: true,
+                noCalendar: true,
+                dateFormat: "h:i K", // 12-hour format with AM/PM
+                time_24hr: false,
+                minuteIncrement: 15,
+                allowInput: true
+            };
+
+            // Initialize date picker
+            flatpickr("#date", {
+                dateFormat: "Y-m-d",
+                minDate: "today"
+            });
+
+            // Initialize start time picker
+            const startTimePicker = flatpickr("#timeStart", {
+                ...timeOptions,
+                defaultHour: 8, // Default to 8:00 AM
+                onChange: function(selectedDates, dateStr) {
+                    updateTimeRange();
+                }
+            });
+
+            // Initialize end time picker
+            const endTimePicker = flatpickr("#timeEnd", {
+                ...timeOptions,
+                defaultHour: 15, // Default to 3:00 PM
+                onChange: function(selectedDates, dateStr) {
+                    updateTimeRange();
+                }
+            });
+
+            // Function to update the hidden time range field
+            function updateTimeRange() {
+                const startTime = document.getElementById('timeStart').value;
+                const endTime = document.getElementById('timeEnd').value;
+
+                if (startTime && endTime) {
+                    document.getElementById('timeRange').value = `${startTime} - ${endTime}`;
+                }
+            }
+
+            // Initialize with default values
+            setTimeout(updateTimeRange, 500);
+
+            // Update time range before form submission
+            const adminSubRequestForm = document.getElementById('adminSubRequestForm');
+            if (adminSubRequestForm) {
+                adminSubRequestForm.addEventListener('submit', function(event) {
+                    const startTime = document.getElementById('timeStart').value;
+                    const endTime = document.getElementById('timeEnd').value;
+
+                    if (startTime && endTime) {
+                        document.getElementById('timeRange').value = `${startTime} - ${endTime}`;
+                    }
+                });
             }
         });
     </script>

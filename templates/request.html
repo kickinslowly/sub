@@ -139,6 +139,36 @@
             width: 100%;
             max-width: 500px;
         }
+
+        /* Loading spinner animation */
+        .spinner {
+            display: inline-block;
+            width: 1.5rem;
+            height: 1.5rem;
+            vertical-align: text-bottom;
+            border: 0.2em solid currentColor;
+            border-right-color: transparent;
+            border-radius: 50%;
+            animation: spinner-border .75s linear infinite;
+            margin-right: 0.5rem;
+        }
+
+        @keyframes spinner-border {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Button states */
+        .btn-loading {
+            position: relative;
+            color: transparent !important;
+        }
+
+        .btn-loading .spinner {
+            position: absolute;
+            left: calc(50% - 0.75rem);
+            top: calc(50% - 0.75rem);
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -171,7 +201,10 @@
                 <textarea id="details" name="details" class="form-control" placeholder="Provide any additional information (optional)"></textarea>
             </div>
 
-            <button type="submit" class="btn btn-primary w-100">Submit Request</button>
+            <button type="submit" id="submitBtn" class="btn btn-primary w-100">
+                <span class="spinner d-none"></span>
+                <span class="btn-text">Submit Request</span>
+            </button>
         </form>
         <a href="/dashboard" class="btn-secondary">Back to Dashboard</a>
     </div>
@@ -244,6 +277,15 @@
             // Prevent default form submission
             event.preventDefault();
 
+            // Get the submit button
+            const submitBtn = document.getElementById('submitBtn');
+            const spinner = submitBtn.querySelector('.spinner');
+
+            // Show loading state
+            submitBtn.classList.add('btn-loading');
+            spinner.classList.remove('d-none');
+            submitBtn.disabled = true;
+
             // Update the time range field one last time
             const startTime = document.getElementById('timeStart').value;
             const endTime = document.getElementById('timeEnd').value;
@@ -252,15 +294,22 @@
                 document.getElementById('timeRange').value = `${startTime} - ${endTime}`;
             }
 
-            // Show the toast notification
-            const toastElement = document.getElementById('toastRequestSubmitted');
-            const toast = new bootstrap.Toast(toastElement);
-            toast.show();
-
-            // Delay form submission to allow the toast animation to play
+            // Show the toast notification after a short delay to show the loading state
             setTimeout(() => {
-                document.getElementById('subRequestForm').submit();
-            }, 2000); // 2-second delay
+                // Show the toast notification
+                const toastElement = document.getElementById('toastRequestSubmitted');
+                const toast = new bootstrap.Toast(toastElement);
+                toast.show();
+
+                // Delay form submission to allow the toast animation to play
+                setTimeout(() => {
+                    // Reset button state before submitting (for better UX if there's a page refresh)
+                    submitBtn.classList.remove('btn-loading');
+                    spinner.classList.add('d-none');
+
+                    document.getElementById('subRequestForm').submit();
+                }, 1500); // 1.5-second delay after toast shows
+            }, 1000); // 1-second delay to show loading state
         }
     </script>
 </body>

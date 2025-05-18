@@ -280,12 +280,80 @@ def admin_dashboard():
         SubstituteRequest.date < cutoff_date
     ).order_by(SubstituteRequest.date.desc()).all()
 
+    # Get all teachers for the create request form
+    teachers = User.query.filter_by(role='teacher').order_by(User.name).all()
+
     return render_template(
         'admin_dashboard.html',
         user=session['user_info'],
         recent_requests=recent_requests,
-        older_requests=older_requests
+        older_requests=older_requests,
+        teachers=teachers
     )
+
+
+@app.route('/admin_create_request', methods=['POST'])
+def admin_create_request():
+    """Handle admin creation of substitute requests."""
+    # Ensure user is authenticated and has admin role
+    if not is_authenticated(required_role='admin'):
+        flash('Access denied. Admins only.')
+        return redirect(url_for('index'))
+
+    try:
+        # Get form data
+        teacher_id = request.form['teacher_id']
+        date = request.form['date']
+        time = request.form['time']
+        details = request.form.get('details', '')
+
+        # Validate teacher exists
+        teacher = User.query.filter_by(id=teacher_id, role='teacher').first()
+        if not teacher:
+            flash('Invalid teacher selected.')
+            return redirect(url_for('admin_dashboard'))
+
+        # Generate unique token
+        token = str(uuid.uuid4())
+
+        # Create and save substitute request
+        sub_request = SubstituteRequest(
+            teacher_id=teacher_id,
+            date=datetime.strptime(date, '%Y-%m-%d'),
+            time=time,
+            details=details.strip(),
+            token=token
+        )
+        db.session.add(sub_request)
+        db.session.commit()
+
+        # Generate dynamic link
+        request_link = url_for('view_sub_request', token=token, _external=True)
+
+        # Send notification with link to all substitutes
+        substitutes = User.query.filter_by(role='substitute').all()
+        subject = "New Substitute Request Available"
+
+        for substitute in substitutes:
+            email_body = f"""
+            A new substitute request has been posted:
+
+            📅 Date: {date}
+            ⏰ Time: {time}
+            👨‍🏫 Teacher: {teacher.name}
+            📌 Details: {details or 'No additional details provided'}
+
+            👉 Accept the request here: {request_link}
+            """
+            send_email(subject, substitute.email, email_body)
+
+        flash('Substitute request created successfully! Notification sent to all substitutes.')
+
+    except Exception as e:
+        flash('An error occurred while creating the request.')
+        print(f"Error: {e}")
+
+    return redirect(url_for('admin_dashboard'))
 
 
 @app.route('/request', methods=['GET', 'POST'])
