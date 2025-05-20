@@ -307,24 +307,82 @@ def admin_dashboard():
         flash('Access denied. Admins only.')
         return redirect(url_for('index'))
 
-    # Get substitute requests and separate them by recent/older
-    cutoff_date = datetime.utcnow() - timedelta(days=15)
-    recent_requests = SubstituteRequest.query.filter(
-        SubstituteRequest.date >= cutoff_date
-    ).order_by(SubstituteRequest.date.asc()).all()
-    older_requests = SubstituteRequest.query.filter(
-        SubstituteRequest.date < cutoff_date
-    ).order_by(SubstituteRequest.date.desc()).all()
-
-    # Get all teachers for the create request form
+    # Get all teachers for the create request form and display
     teachers = User.query.filter_by(role='teacher').order_by(User.name).all()
+
+    # Get search parameters from request
+    search_keyword = request.args.get('search_keyword', '')
+    search_date = request.args.get('search_date', '')
+    search_status = request.args.get('search_status', '')
+
+    # Start with a base query
+    query = SubstituteRequest.query
+
+    # Apply filters based on search parameters
+    if search_keyword:
+        # Join with User table to search by teacher or substitute name
+        teacher_ids = db.session.query(User.id).filter(
+            User.name.ilike(f'%{search_keyword}%'),
+            User.role == 'teacher'
+        ).all()
+        teacher_ids = [id[0] for id in teacher_ids]
+
+        substitute_ids = db.session.query(User.id).filter(
+            User.name.ilike(f'%{search_keyword}%'),
+            User.role == 'substitute'
+        ).all()
+        substitute_ids = [id[0] for id in substitute_ids]
+
+        # Filter by teacher or substitute name
+        if teacher_ids and substitute_ids:
+            query = query.filter(
+                db.or_(
+                    SubstituteRequest.teacher_id.in_(teacher_ids),
+                    SubstituteRequest.substitute_id.in_(substitute_ids)
+                )
+            )
+        elif teacher_ids:
+            query = query.filter(SubstituteRequest.teacher_id.in_(teacher_ids))
+        elif substitute_ids:
+            query = query.filter(SubstituteRequest.substitute_id.in_(substitute_ids))
+        else:
+            # If no matching teachers or substitutes, return empty results
+            query = query.filter(SubstituteRequest.id == -1)  # This will return no results
+
+    # Filter by date if provided
+    if search_date:
+        try:
+            search_date_obj = datetime.strptime(search_date, '%Y-%m-%d').date()
+            query = query.filter(SubstituteRequest.date == search_date_obj)
+        except ValueError:
+            # If date format is invalid, ignore this filter
+            pass
+
+    # Filter by status if provided
+    if search_status:
+        query = query.filter(SubstituteRequest.status == search_status)
+
+    # If no search parameters are provided, separate by recent/older
+    if not (search_keyword or search_date or search_status):
+        cutoff_date = datetime.utcnow() - timedelta(days=15)
+        recent_requests = query.filter(
+            SubstituteRequest.date >= cutoff_date
+        ).order_by(SubstituteRequest.date.asc()).all()
+        older_requests = query.filter(
+            SubstituteRequest.date < cutoff_date
+        ).order_by(SubstituteRequest.date.desc()).all()
+    else:
+        # If search parameters are provided, show all matching results as recent
+        recent_requests = query.order_by(SubstituteRequest.date.desc()).all()
+        older_requests = []
 
     return render_template(
         'admin_dashboard.html',
         user=session['user_info'],
         recent_requests=recent_requests,
         older_requests=older_requests,
-        teachers=teachers
+        teachers=teachers,
+        request=request  # Pass the request object to access args in the template
     )
 
 
