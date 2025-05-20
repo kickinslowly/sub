@@ -2,22 +2,45 @@ from flask import Flask, redirect, url_for, session, render_template, request, f
 from authlib.integrations.flask_client import OAuth
 from config import Config
 from datetime import datetime, timedelta
-from helpers import send_email  # Import the send_email helper function
-from extensions import db, mail  # Import the instances
 from models import User, SubstituteRequest, Grade, Subject, user_grades, user_subjects # Import models
 import uuid
 import sqlite3
 import os
 from werkzeug.security import check_password_hash
+from twilio.rest import Client
 
 # Initialize Flask app
 app = Flask(__name__)
 app.config.from_object(Config)
 
 # Initialize extensions
+from extensions import db, mail
 db.init_app(app)
 mail.init_app(app)
 oauth = OAuth(app)
+
+# Initialize Twilio client
+twilio_initialized = False
+if hasattr(Config, 'TWILIO_ACCOUNT_SID') and hasattr(Config, 'TWILIO_AUTH_TOKEN'):
+    if Config.TWILIO_ACCOUNT_SID and Config.TWILIO_AUTH_TOKEN and Config.TWILIO_PHONE_NUMBER:
+        try:
+            # Update the global twilio_client in extensions.py
+            import extensions
+            extensions.twilio_client = Client(Config.TWILIO_ACCOUNT_SID, Config.TWILIO_AUTH_TOKEN)
+            # Test the client with a simple API call
+            account = extensions.twilio_client.api.accounts.list(limit=1)
+            print("Twilio client initialized and verified successfully")
+            twilio_initialized = True
+        except Exception as e:
+            print(f"Failed to initialize Twilio client: {e}")
+            print("SMS functionality will be disabled")
+    else:
+        print("Twilio credentials are not properly configured. SMS functionality will be disabled.")
+else:
+    print("Twilio configuration is missing. SMS functionality will be disabled.")
+
+# Import helper functions after Twilio client is initialized
+from helpers import send_email, send_sms
 
 print("Registering models...")
 # Wrap database queries in app.app_context() to ensure they work
@@ -248,6 +271,47 @@ def substitute_dashboard():
     return render_template('substitute_dashboard.html', user=logged_in_user, accepted_requests=accepted_requests)
 
 
+@app.route('/edit_profile', methods=['GET', 'POST'])
+def edit_profile():
+    # Ensure user is authenticated
+    logged_in_user = get_logged_in_user()
+    if not logged_in_user:
+        flash('Please log in to continue.')
+        return redirect(url_for('index'))
+
+    # Ensure user is a substitute
+    if logged_in_user.role != 'substitute':
+        flash('This feature is only available for substitute users.')
+        return redirect(url_for('dashboard'))
+
+    # Fetch all grades and subjects for the form
+    grades = Grade.query.order_by(Grade.id.asc()).all()
+    subjects = Subject.query.order_by(Subject.id.asc()).all()
+
+    if request.method == 'POST':
+        # Update user details
+        logged_in_user.name = request.form['name']
+        logged_in_user.email = request.form['email']
+        logged_in_user.phone = request.form.get('phone', None)
+
+        # Update grades and subjects
+        grade_ids = request.form.getlist('grades')  # List of selected grade IDs
+        subject_ids = request.form.getlist('subjects')  # List of selected subject IDs
+        grade_objs = Grade.query.filter(Grade.id.in_(grade_ids)).all()
+        subject_objs = Subject.query.filter(Subject.id.in_(subject_ids)).all()
+
+        logged_in_user.grades = grade_objs
+        logged_in_user.subjects = subject_objs
+
+        # Save changes to the database
+        db.session.commit()
+
+        flash('Your profile has been updated successfully!')
+        return redirect(url_for('substitute_dashboard'))
+
+    return render_template('edit_profile.html', user=logged_in_user, grades=grades, subjects=subjects)
+
+
 @app.route('/dashboard')
 def dashboard():
     """Dashboard for teachers."""
@@ -424,11 +488,30 @@ def admin_create_request():
         # Generate dynamic link
         request_link = url_for('view_sub_request', token=token, _external=True)
 
-        # Send notification with link to all substitutes
-        substitutes = User.query.filter_by(role='substitute').all()
+        # Get teacher's grades and subjects
+        teacher_grades = [grade.id for grade in teacher.grades]
+        teacher_subjects = [subject.id for subject in teacher.subjects]
+
+        # Find eligible substitutes (matching grades and subjects)
+        eligible_substitutes = []
+        all_substitutes = User.query.filter_by(role='substitute').all()
+
+        for substitute in all_substitutes:
+            sub_grades = [grade.id for grade in substitute.grades]
+            sub_subjects = [subject.id for subject in substitute.subjects]
+
+            # Check if there's any overlap in grades and subjects
+            if (set(teacher_grades) & set(sub_grades)) and (set(teacher_subjects) & set(sub_subjects)):
+                eligible_substitutes.append(substitute)
+
+        # If no eligible substitutes found, use all substitutes
+        if not eligible_substitutes:
+            eligible_substitutes = all_substitutes
+
+        # Send notification with link to eligible substitutes
         subject = "New Substitute Request Available"
 
-        for substitute in substitutes:
+        for substitute in eligible_substitutes:
             email_body = f"""
             A new substitute request has been posted:
 
@@ -441,7 +524,12 @@ def admin_create_request():
             """
             send_email(subject, substitute.email, email_body)
 
-        # Send notification to admin
+            # Send SMS to eligible substitutes with phones
+            if substitute.phone:
+                sms_body = f"New sub request: Teacher {teacher.name}, Date {date}, Time {time}. Accept at: {request_link}"
+                send_sms(substitute.phone, sms_body)
+
+        # Send notification to admin via email
         admin_subject = "New Substitute Request Created"
         admin_email_body = f"""
         A new substitute request has been created:
@@ -453,6 +541,17 @@ def admin_create_request():
         """
         for admin_email in Config.ADMIN_EMAILS:
             send_email(admin_subject, admin_email, admin_email_body)
+
+        # Send SMS notification to admin
+        admin_sms_body = f"New sub request: Teacher {teacher.name}, Date {date}, Time {time}"
+        if hasattr(Config, 'ADMIN_PHONE_NUMBERS'):
+            for admin_phone in Config.ADMIN_PHONE_NUMBERS:
+                send_sms(admin_phone, admin_sms_body)
+
+        # Send SMS confirmation to teacher
+        if teacher.phone:
+            teacher_sms_body = "Sub Request submitted successfully."
+            send_sms(teacher.phone, teacher_sms_body)
 
         flash('Substitute request created successfully! Notification sent to all substitutes.')
 
@@ -512,7 +611,7 @@ def request_form_and_submit():
                     """
                     send_email(subject, substitute.email, email_body)
 
-                # Send notification to admin
+                # Send notification to admin via email
                 admin_subject = "New Substitute Request Created"
                 admin_email_body = f"""
                 A new substitute request has been created:
@@ -524,6 +623,17 @@ def request_form_and_submit():
                 """
                 for admin_email in Config.ADMIN_EMAILS:
                     send_email(admin_subject, admin_email, admin_email_body)
+
+                # Send SMS notification to admin
+                admin_sms_body = f"New sub request: Teacher {teacher.name}, Date {date}, Time {time}"
+                if hasattr(Config, 'ADMIN_PHONE_NUMBERS'):
+                    for admin_phone in Config.ADMIN_PHONE_NUMBERS:
+                        send_sms(admin_phone, admin_sms_body)
+
+                # Send SMS confirmation to teacher
+                if teacher.phone:
+                    teacher_sms_body = "Sub Request submitted successfully."
+                    send_sms(teacher.phone, teacher_sms_body)
 
                 flash('Substitute request submitted successfully! Notification sent.')
             else:

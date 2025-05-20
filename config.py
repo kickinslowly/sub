@@ -14,3 +14,8 @@ class Config:
     MAIL_PASSWORD = 'suwj zxyj xiwt vozh'
     ADMIN_EMAILS = ['kickinslowly@gmail.com']
 
+    # Twilio configuration
+    TWILIO_ACCOUNT_SID = 'AC1915744a1295f8c15ab863e13705d1dd'
+    TWILIO_AUTH_TOKEN = 'ec81dae08e2819332fcbbc8630266d33'
+    TWILIO_PHONE_NUMBER = '18333624757'
+    ADMIN_PHONE_NUMBERS = ['7074954246']
