@@ -398,6 +398,45 @@
             color: var(--gray-color);
             font-size: 1.1rem;
         }
+
+        /* Tab styles */
+        .main-tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .main-tab {
+            padding: 12px 24px;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: var(--transition);
+            font-weight: 500;
+            font-size: 1.1rem;
+        }
+
+        .main-tab.active {
+            border-bottom-color: var(--primary-color);
+            color: var(--primary-color);
+        }
+
+        .main-tab:hover:not(.active) {
+            border-bottom-color: #ddd;
+        }
+
+        .main-content {
+            display: none;
+        }
+
+        .main-content.active {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
 </head>
 <body>
@@ -459,46 +498,125 @@
             </div>
         </div>
 
-        <!-- Assignments Section -->
+        <!-- Main Tabs Container -->
         <div class="card">
             <div class="card-header">
-                <h2><i class="fas fa-clipboard-list"></i> Your Assignments</h2>
+                <h2><i class="fas fa-tasks"></i> Substitute Dashboard</h2>
             </div>
 
-            <div id="assignments-container" class="assignment-list">
-                {% if accepted_requests %}
-                    {% for request, teacher_name in accepted_requests %}
-                    <div class="assignment-item">
-                        <h3>
-                            <i class="fas fa-calendar-check"></i>
-                            {{ request.date.strftime('%B %d, %Y') }}
-                        </h3>
-                        <div class="assignment-item-details">
-                            <div class="assignment-detail">
-                                <span class="assignment-detail-label">Teacher</span>
-                                <span class="assignment-detail-value">{{ teacher_name }}</span>
-                            </div>
-                            <div class="assignment-detail">
-                                <span class="assignment-detail-label">Time</span>
-                                <span class="assignment-detail-value">{{ request.time }}</span>
-                            </div>
-                            <div class="assignment-detail">
-                                <span class="assignment-detail-label">Request Made</span>
-                                <span class="assignment-detail-value">{{ request.created_at.strftime('%B %d, %Y at %I:%M %p') }}</span>
-                            </div>
-                        </div>
+            <!-- Tab Navigation -->
+            <div class="main-tabs">
+                <div class="main-tab active" data-tab="matching-requests">
+                    <i class="fas fa-bell"></i> Matching Open Requests
+                </div>
+                <div class="main-tab" data-tab="your-assignments">
+                    <i class="fas fa-clipboard-list"></i> Your Assignments
+                </div>
+            </div>
 
-                        {% if request.details %}
-                        <div class="assignment-detail" style="margin-top: 10px;">
-                            <span class="assignment-detail-label">Details</span>
-                            <span class="assignment-detail-value" id="details-{{ request.id }}">{{ request.details }}</span>
+            <!-- Tab Contents -->
+            <!-- Matching Open Requests Tab -->
+            <div id="tab-matching-requests" class="main-content active">
+                <div id="matching-requests-container" class="assignment-list">
+                    {% if matching_requests %}
+                        {% for request, teacher_name, teacher in matching_requests %}
+                        <div class="assignment-item" style="border-left: 4px solid var(--primary-color);">
+                            <h3>
+                                <i class="fas fa-calendar"></i>
+                                {{ request.date.strftime('%B %d, %Y') }}
+                            </h3>
+                            <div class="assignment-item-details">
+                                <div class="assignment-detail">
+                                    <span class="assignment-detail-label">Teacher</span>
+                                    <span class="assignment-detail-value">{{ teacher_name }}</span>
+                                </div>
+                                <div class="assignment-detail">
+                                    <span class="assignment-detail-label">Time</span>
+                                    <span class="assignment-detail-value">{{ request.time }}</span>
+                                </div>
+                                <div class="assignment-detail">
+                                    <span class="assignment-detail-label">Request Made</span>
+                                    <span class="assignment-detail-value">{{ request.created_at.strftime('%B %d, %Y at %I:%M %p') }}</span>
+                                </div>
+                                {% if teacher.grades %}
+                                <div class="assignment-detail">
+                                    <span class="assignment-detail-label">Grades</span>
+                                    <span class="assignment-detail-value">
+                                        {% for grade in teacher.grades %}
+                                            <span class="badge" style="background-color: rgba(37, 117, 252, 0.2); color: #2575fc;">{{ grade.name }}</span>
+                                        {% endfor %}
+                                    </span>
+                                </div>
+                                {% endif %}
+                                {% if teacher.subjects %}
+                                <div class="assignment-detail">
+                                    <span class="assignment-detail-label">Subjects</span>
+                                    <span class="assignment-detail-value">
+                                        {% for subject in teacher.subjects %}
+                                            <span class="badge" style="background-color: rgba(37, 117, 252, 0.2); color: #2575fc;">{{ subject.name }}</span>
+                                        {% endfor %}
+                                    </span>
+                                </div>
+                                {% endif %}
+                            </div>
+
+                            {% if request.details %}
+                            <div class="assignment-detail" style="margin-top: 10px;">
+                                <span class="assignment-detail-label">Details</span>
+                                <span class="assignment-detail-value" id="details-open-{{ request.id }}">{{ request.details }}</span>
+                            </div>
+                            {% endif %}
+
+                            <div style="margin-top: 15px;">
+                                <a href="{{ url_for('view_sub_request', token=request.token) }}" class="btn btn-primary">
+                                    <i class="fas fa-check"></i> View & Accept
+                                </a>
+                            </div>
                         </div>
-                        {% endif %}
-                    </div>
-                    {% endfor %}
-                {% else %}
-                    <p class="no-assignments">No accepted substitute requests yet.</p>
-                {% endif %}
+                        {% endfor %}
+                    {% else %}
+                        <p class="no-assignments">No matching open requests available. Check back later or update your preferences.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Your Assignments Tab -->
+            <div id="tab-your-assignments" class="main-content">
+                <div id="assignments-container" class="assignment-list">
+                    {% if accepted_requests %}
+                        {% for request, teacher_name in accepted_requests %}
+                        <div class="assignment-item">
+                            <h3>
+                                <i class="fas fa-calendar-check"></i>
+                                {{ request.date.strftime('%B %d, %Y') }}
+                            </h3>
+                            <div class="assignment-item-details">
+                                <div class="assignment-detail">
+                                    <span class="assignment-detail-label">Teacher</span>
+                                    <span class="assignment-detail-value">{{ teacher_name }}</span>
+                                </div>
+                                <div class="assignment-detail">
+                                    <span class="assignment-detail-label">Time</span>
+                                    <span class="assignment-detail-value">{{ request.time }}</span>
+                                </div>
+                                <div class="assignment-detail">
+                                    <span class="assignment-detail-label">Request Made</span>
+                                    <span class="assignment-detail-value">{{ request.created_at.strftime('%B %d, %Y at %I:%M %p') }}</span>
+                                </div>
+                            </div>
+
+                            {% if request.details %}
+                            <div class="assignment-detail" style="margin-top: 10px;">
+                                <span class="assignment-detail-label">Details</span>
+                                <span class="assignment-detail-value" id="details-{{ request.id }}">{{ request.details }}</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="no-assignments">No accepted substitute requests yet.</p>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>
@@ -513,6 +631,23 @@
     <!-- JavaScript for reactivity -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // Tab switching functionality
+            const tabs = document.querySelectorAll('.main-tab');
+            const contents = document.querySelectorAll('.main-content');
+
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    // Remove active class from all tabs and contents
+                    tabs.forEach(t => t.classList.remove('active'));
+                    contents.forEach(c => c.classList.remove('active'));
+
+                    // Add active class to clicked tab and corresponding content
+                    tab.classList.add('active');
+                    const tabId = `tab-${tab.dataset.tab}`;
+                    document.getElementById(tabId).classList.add('active');
+                });
+            });
+
             // Function to make URLs clickable in text
             function makeUrlsClickable() {
                 // Get all detail elements that might contain URLs

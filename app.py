@@ -27,9 +27,8 @@ if hasattr(Config, 'TWILIO_ACCOUNT_SID') and hasattr(Config, 'TWILIO_AUTH_TOKEN'
             # Update the global twilio_client in extensions.py
             import extensions
             extensions.twilio_client = Client(Config.TWILIO_ACCOUNT_SID, Config.TWILIO_AUTH_TOKEN)
-            # Test the client with a simple API call
-            account = extensions.twilio_client.api.accounts.list(limit=1)
-            print("Twilio client initialized and verified successfully")
+            # Set twilio_initialized to True without making an API call
+            print("Twilio client initialized successfully")
             twilio_initialized = True
         except Exception as e:
             print(f"Failed to initialize Twilio client: {e}")
@@ -268,7 +267,67 @@ def substitute_dashboard():
         SubstituteRequest.substitute_id == logged_in_user.id
     ).order_by(SubstituteRequest.date.desc()).all()
 
-    return render_template('substitute_dashboard.html', user=logged_in_user, accepted_requests=accepted_requests)
+    # Fetch all open substitute requests
+    open_requests_query = db.session.query(
+        SubstituteRequest, User.name.label("teacher_name"), User
+    ).join(User, SubstituteRequest.teacher_id == User.id).filter(
+        SubstituteRequest.status == "Open"
+    ).order_by(SubstituteRequest.date.asc())
+
+    # Get all open requests
+    all_open_requests = open_requests_query.all()
+
+    # Filter requests based on substitute's preferences
+    matching_requests = []
+
+    for request, teacher_name, teacher in all_open_requests:
+        # Check if the substitute has any grade preferences
+        sub_has_grade_preferences = len(logged_in_user.grades) > 0
+
+        # Check if the substitute has any subject preferences
+        sub_has_subject_preferences = len(logged_in_user.subjects) > 0
+
+        # If substitute has no preferences, show all requests
+        if not sub_has_grade_preferences and not sub_has_subject_preferences:
+            matching_requests.append((request, teacher_name, teacher))
+            continue
+
+        # Check for grade match
+        grade_match = False
+        if not sub_has_grade_preferences:
+            # If substitute has no grade preferences, consider it a match
+            grade_match = True
+        else:
+            # Get the set of grade IDs for the substitute and teacher
+            sub_grade_ids = {grade.id for grade in logged_in_user.grades}
+            teacher_grade_ids = {grade.id for grade in teacher.grades}
+
+            # If there's any overlap or substitute has selected all grades, it's a match
+            if not teacher_grade_ids or not sub_grade_ids or sub_grade_ids.intersection(teacher_grade_ids):
+                grade_match = True
+
+        # Check for subject match
+        subject_match = False
+        if not sub_has_subject_preferences:
+            # If substitute has no subject preferences, consider it a match
+            subject_match = True
+        else:
+            # Get the set of subject IDs for the substitute and teacher
+            sub_subject_ids = {subject.id for subject in logged_in_user.subjects}
+            teacher_subject_ids = {subject.id for subject in teacher.subjects}
+
+            # If there's any overlap or substitute has selected all subjects, it's a match
+            if not teacher_subject_ids or not sub_subject_ids or sub_subject_ids.intersection(teacher_subject_ids):
+                subject_match = True
+
+        # If both grade and subject match, add to matching requests
+        if grade_match and subject_match:
+            matching_requests.append((request, teacher_name, teacher))
+
+    return render_template('substitute_dashboard.html', 
+                          user=logged_in_user, 
+                          accepted_requests=accepted_requests,
+                          matching_requests=matching_requests)
 
 
 @app.route('/edit_profile', methods=['GET', 'POST'])
@@ -675,10 +734,75 @@ def view_sub_request(token):
         sub_request.substitute_id = logged_in_user.id
         db.session.commit()
 
+        # Send email notifications
+        # 1. Email to admin
+        admin_subject = "Substitute Request Filled"
+        admin_email_body = f"""
+        A substitute request has been filled:
+
+        👨‍🏫 Teacher: {teacher.name}
+        📅 Date: {sub_request.date.strftime('%Y-%m-%d')}
+        ⏰ Time: {sub_request.time}
+        📌 Details: {sub_request.details or 'No additional details provided'}
+
+        ✅ Filled by: {logged_in_user.name} ({logged_in_user.email})
+        """
+        for admin_email in Config.ADMIN_EMAILS:
+            send_email(admin_subject, admin_email, admin_email_body)
+
+        # 2. Email to teacher
+        teacher_subject = "Your Substitute Request Has Been Filled"
+        teacher_email_body = f"""
+        Good news! Your substitute request has been filled:
+
+        📅 Date: {sub_request.date.strftime('%Y-%m-%d')}
+        ⏰ Time: {sub_request.time}
+
+        ✅ Filled by: {logged_in_user.name}
+        📧 Contact: {logged_in_user.email}
+        """
+        send_email(teacher_subject, teacher.email, teacher_email_body)
+
+        # 3. Email to substitute
+        sub_subject = "Substitute Position Confirmation"
+        sub_email_body = f"""
+        Thank you for accepting the substitute position:
+
+        👨‍🏫 Teacher: {teacher.name}
+        📅 Date: {sub_request.date.strftime('%Y-%m-%d')}
+        ⏰ Time: {sub_request.time}
+        📌 Details: {sub_request.details or 'No additional details provided'}
+
+        ⚠️ Important: Please report to the front office at least 10 minutes before the scheduled time.
+        """
+
+        # Add grade and subject information if available
+        if teacher.grades:
+            grade_names = ", ".join([grade.name for grade in teacher.grades])
+            sub_email_body += f"\n📚 Grade(s): {grade_names}"
+
+        if teacher.subjects:
+            subject_names = ", ".join([subject.name for subject in teacher.subjects])
+            sub_email_body += f"\n📖 Subject(s): {subject_names}"
+
+        send_email(sub_subject, logged_in_user.email, sub_email_body)
+
         flash("You have successfully accepted the sub request.")
         return redirect(url_for('view_sub_request', token=token))
 
-    return render_template('sub_request.html', sub_request=sub_request, teacher=teacher)
+    # Get the logged-in user to determine if they are the one who accepted the request
+    logged_in_user = get_logged_in_user()
+
+    # Get the substitute who accepted the request (if any)
+    substitute = None
+    if sub_request.substitute_id:
+        substitute = User.query.get(sub_request.substitute_id)
+
+    return render_template('sub_request.html', 
+                          sub_request=sub_request, 
+                          teacher=teacher, 
+                          logged_in_user=logged_in_user,
+                          substitute=substitute)
 
 
 @app.route('/manage_users', methods=['GET'])
@@ -725,6 +849,62 @@ def accept_sub_request(token):
     sub_request.status = "Filled"
     sub_request.substitute_id = logged_in_user.id
     db.session.commit()
+
+    # Fetch the teacher information
+    teacher = User.query.get(sub_request.teacher_id)
+
+    # Send email notifications
+    # 1. Email to admin
+    admin_subject = "Substitute Request Filled"
+    admin_email_body = f"""
+    A substitute request has been filled:
+
+    👨‍🏫 Teacher: {teacher.name}
+    📅 Date: {sub_request.date.strftime('%Y-%m-%d')}
+    ⏰ Time: {sub_request.time}
+    📌 Details: {sub_request.details or 'No additional details provided'}
+
+    ✅ Filled by: {logged_in_user.name} ({logged_in_user.email})
+    """
+    for admin_email in Config.ADMIN_EMAILS:
+        send_email(admin_subject, admin_email, admin_email_body)
+
+    # 2. Email to teacher
+    teacher_subject = "Your Substitute Request Has Been Filled"
+    teacher_email_body = f"""
+    Good news! Your substitute request has been filled:
+
+    📅 Date: {sub_request.date.strftime('%Y-%m-%d')}
+    ⏰ Time: {sub_request.time}
+
+    ✅ Filled by: {logged_in_user.name}
+    📧 Contact: {logged_in_user.email}
+    """
+    send_email(teacher_subject, teacher.email, teacher_email_body)
+
+    # 3. Email to substitute
+    sub_subject = "Substitute Position Confirmation"
+    sub_email_body = f"""
+    Thank you for accepting the substitute position:
+
+    👨‍🏫 Teacher: {teacher.name}
+    📅 Date: {sub_request.date.strftime('%Y-%m-%d')}
+    ⏰ Time: {sub_request.time}
+    📌 Details: {sub_request.details or 'No additional details provided'}
+
+    ⚠️ Important: Please report to the front office at least 10 minutes before the scheduled time.
+    """
+
+    # Add grade and subject information if available
+    if teacher.grades:
+        grade_names = ", ".join([grade.name for grade in teacher.grades])
+        sub_email_body += f"\n📚 Grade(s): {grade_names}"
+
+    if teacher.subjects:
+        subject_names = ", ".join([subject.name for subject in teacher.subjects])
+        sub_email_body += f"\n📖 Subject(s): {subject_names}"
+
+    send_email(sub_subject, logged_in_user.email, sub_email_body)
 
     return jsonify({"status": "success", "message": "Position accepted!"})
 
