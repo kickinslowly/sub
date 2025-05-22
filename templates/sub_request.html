@@ -89,6 +89,13 @@
 </head>
 <body>
     <div class="container">
+        <div class="row justify-content-center mb-3">
+            <div class="col-md-8 text-center">
+                <a href="{{ url_for('substitute_dashboard') }}" class="btn btn-primary btn-lg">
+                    <i class="fas fa-arrow-left me-2"></i>Back to Substitute Dashboard
+                </a>
+            </div>
+        </div>
         <div class="row justify-content-center">
             <div class="col-md-8">
                 <div class="card">
@@ -110,6 +117,9 @@
                                 </div>
                                 <div class="col-md-6">
                                     <p><span class="info-label"><i class="fas fa-calendar-plus me-2"></i>Requested:</span> {{ sub_request.created_at.strftime('%B %d, %Y at %I:%M %p') }}</p>
+                                    {% if sub_request.reason %}
+                                    <p><span class="info-label"><i class="fas fa-question-circle me-2"></i>Reason:</span> {{ sub_request.reason }}</p>
+                                    {% endif %}
                                     {% if sub_request.details %}
                                     <p><span class="info-label"><i class="fas fa-info-circle me-2"></i>Details:</span> {{ sub_request.details }}</p>
                                     {% endif %}

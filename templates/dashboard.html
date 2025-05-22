@@ -682,6 +682,13 @@
                                 {% endif %}
                             </div>
 
+                            {% if booking.reason %}
+                            <div class="booking-detail" style="margin-top: 10px;">
+                                <span class="booking-detail-label">Reason for Absence</span>
+                                <span class="booking-detail-value">{{ booking.reason }}</span>
+                            </div>
+                            {% endif %}
+
                             {% if booking.details %}
                             <div class="booking-detail" style="margin-top: 10px;">
                                 <span class="booking-detail-label">Details</span>
@@ -733,6 +740,13 @@
                                     </span>
                                 </div>
                             </div>
+
+                            {% if booking.reason %}
+                            <div class="booking-detail" style="margin-top: 10px;">
+                                <span class="booking-detail-label">Reason for Absence</span>
+                                <span class="booking-detail-value">{{ booking.reason }}</span>
+                            </div>
+                            {% endif %}
 
                             {% if booking.details %}
                             <div class="booking-detail" style="margin-top: 10px;">
@@ -788,6 +802,13 @@
                                     <span class="booking-detail-value">{{ booking.substitute_user.name }}</span>
                                 </div>
                             </div>
+
+                            {% if booking.reason %}
+                            <div class="booking-detail" style="margin-top: 10px;">
+                                <span class="booking-detail-label">Reason for Absence</span>
+                                <span class="booking-detail-value">{{ booking.reason }}</span>
+                            </div>
+                            {% endif %}
 
                             {% if booking.details %}
                             <div class="booking-detail" style="margin-top: 10px;">

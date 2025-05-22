@@ -46,6 +46,7 @@ class SubstituteRequest(db.Model):
     date = Column(Date, nullable=False)
     time = Column(String(50), nullable=False)
     details = Column(Text, nullable=True)
+    reason = Column(String(20), nullable=True)  # Options: Personal, Medical, Sickness, School Business
     status = Column(String(20), default='Open')
     substitute_id = Column(Integer, ForeignKey('user.id'), nullable=True)
     substitute_user = relationship("User", foreign_keys=[substitute_id])

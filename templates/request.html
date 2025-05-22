@@ -199,6 +199,17 @@
             </div>
 
             <div class="form-group">
+                <label for="reason">Reason for Absence:</label>
+                <select id="reason" name="reason" class="form-control" required>
+                    <option value="" disabled {% if not edit_mode or not sub_request.reason %}selected{% endif %}>Select a reason</option>
+                    <option value="Personal" {% if edit_mode and sub_request.reason == 'Personal' %}selected{% endif %}>Personal</option>
+                    <option value="Medical" {% if edit_mode and sub_request.reason == 'Medical' %}selected{% endif %}>Medical</option>
+                    <option value="Sickness" {% if edit_mode and sub_request.reason == 'Sickness' %}selected{% endif %}>Sickness</option>
+                    <option value="School Business" {% if edit_mode and sub_request.reason == 'School Business' %}selected{% endif %}>School Business</option>
+                </select>
+            </div>
+
+            <div class="form-group">
                 <label for="details">Details:</label>
                 <textarea id="details" name="details" class="form-control" placeholder="Provide any additional information (optional)">{% if edit_mode %}{{ sub_request.details }}{% endif %}</textarea>
             </div>

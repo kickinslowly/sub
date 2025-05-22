@@ -96,7 +96,7 @@ def seed_database():
 
 # Function to check and add missing columns
 def update_database_schema():
-    """Check if created_at column exists in substitute_request table and add it if not."""
+    """Check if required columns exist in substitute_request table and add them if not."""
     try:
         # Get the database path from the app config
         db_uri = app.config['SQLALCHEMY_DATABASE_URI']
@@ -125,29 +125,61 @@ def update_database_schema():
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='substitute_request'")
         if cursor.fetchone() is None:
             # Table doesn't exist yet, it will be created by db.create_all()
-            print("substitute_request table doesn't exist yet, skipping schema update")
+            print("substitute_request table doesn't exist yet, it will be created by db.create_all()")
             conn.close()
             return
 
-        # Check if created_at column exists in the substitute_request table
+        # Check which columns exist in the substitute_request table
         cursor.execute("PRAGMA table_info(substitute_request)")
         columns_info = cursor.fetchall()
         columns = [column[1] for column in columns_info]
         print(f"Existing columns in substitute_request: {columns}")
 
-        if 'created_at' not in columns:
-            print("created_at column not found, adding it now...")
-            # Add the created_at column with a default value of current timestamp
-            cursor.execute("ALTER TABLE substitute_request ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        # Check if all required columns exist
+        required_columns = ['id', 'teacher_id', 'date', 'time', 'details', 'reason', 'status', 'substitute_id', 'token', 'created_at']
+        missing_columns = [col for col in required_columns if col not in columns]
 
-            # Update existing records to have a created_at value
-            current_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-            cursor.execute(f"UPDATE substitute_request SET created_at = '{current_time}'")
+        if missing_columns:
+            print(f"Missing columns in substitute_request table: {missing_columns}")
 
-            conn.commit()
-            print("Added created_at column to substitute_request table and updated existing records")
+            # If 'reason' column is missing, try to add it
+            if 'reason' in missing_columns:
+                try:
+                    print("Adding reason column...")
+                    cursor.execute("ALTER TABLE substitute_request ADD COLUMN reason VARCHAR(20)")
+                    conn.commit()
+                    print("Added reason column to substitute_request table")
+                    missing_columns.remove('reason')
+                except sqlite3.OperationalError as e:
+                    print(f"Error adding reason column: {e}")
+
+            # If 'created_at' column is missing, try to add it
+            if 'created_at' in missing_columns:
+                try:
+                    print("Adding created_at column...")
+                    cursor.execute("ALTER TABLE substitute_request ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+                    current_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+                    cursor.execute(f"UPDATE substitute_request SET created_at = '{current_time}'")
+                    conn.commit()
+                    print("Added created_at column to substitute_request table")
+                    missing_columns.remove('created_at')
+                except sqlite3.OperationalError as e:
+                    print(f"Error adding created_at column: {e}")
+
+            # If there are still missing columns that couldn't be added, drop and recreate the table
+            if missing_columns:
+                print(f"Still missing columns: {missing_columns}. Will drop and recreate the table.")
+
+                # Backup existing data
+                cursor.execute("CREATE TABLE IF NOT EXISTS substitute_request_backup AS SELECT * FROM substitute_request")
+
+                # Drop the table
+                cursor.execute("DROP TABLE substitute_request")
+
+                conn.commit()
+                print("Dropped substitute_request table. It will be recreated by db.create_all()")
         else:
-            print("created_at column already exists in substitute_request table")
+            print("All required columns exist in substitute_request table")
 
         conn.close()
     except Exception as e:
@@ -523,6 +555,7 @@ def admin_create_request():
         date = request.form['date']
         time = request.form['time']
         details = request.form.get('details', '')
+        reason = request.form.get('reason', '')
 
         # Validate teacher exists
         teacher = User.query.filter_by(id=teacher_id, role='teacher').first()
@@ -539,6 +572,7 @@ def admin_create_request():
             date=datetime.strptime(date, '%Y-%m-%d'),
             time=time,
             details=details.strip(),
+            reason=reason,
             token=token
         )
         db.session.add(sub_request)
@@ -602,7 +636,7 @@ def admin_create_request():
             send_email(admin_subject, admin_email, admin_email_body)
 
         # Send SMS notification to admin
-        admin_sms_body = f"New sub request: Teacher {teacher.name}, Date {date}, Time {time}"
+        admin_sms_body = f"New sub request: Teacher {teacher.name}, Date {date}, Time {time}, Reason {reason or 'Not specified'}"
         if hasattr(Config, 'ADMIN_PHONE_NUMBERS'):
             for admin_phone in Config.ADMIN_PHONE_NUMBERS:
                 send_sms(admin_phone, admin_sms_body)
@@ -634,6 +668,7 @@ def request_form_and_submit():
             date = request.form['date']
             time = request.form['time']
             details = request.form.get('details', '')
+            reason = request.form.get('reason', '')
 
             teacher = get_logged_in_user()
 
@@ -646,6 +681,7 @@ def request_form_and_submit():
                     date=datetime.strptime(date, '%Y-%m-%d'),
                     time=time,
                     details=details.strip(),
+                    reason=reason,
                     token=token
                 )
                 db.session.add(sub_request)
@@ -664,6 +700,7 @@ def request_form_and_submit():
 
                     📅 Date: {date}
                     ⏰ Time: {time}
+                    🔍 Reason: {reason or 'Not specified'}
                     📌 Details: {details or 'No additional details provided'}
 
                     👉 Accept the request here: {request_link}
@@ -678,13 +715,14 @@ def request_form_and_submit():
                 👨‍🏫 Teacher: {teacher.name}
                 📅 Date: {date}
                 ⏰ Time: {time}
+                🔍 Reason: {reason or 'Not specified'}
                 📌 Details: {details or 'No additional details provided'}
                 """
                 for admin_email in Config.ADMIN_EMAILS:
                     send_email(admin_subject, admin_email, admin_email_body)
 
                 # Send SMS notification to admin
-                admin_sms_body = f"New sub request: Teacher {teacher.name}, Date {date}, Time {time}"
+                admin_sms_body = f"New sub request: Teacher {teacher.name}, Date {date}, Time {time}, Reason {reason or 'Not specified'}"
                 if hasattr(Config, 'ADMIN_PHONE_NUMBERS'):
                     for admin_phone in Config.ADMIN_PHONE_NUMBERS:
                         send_sms(admin_phone, admin_sms_body)
@@ -743,6 +781,7 @@ def view_sub_request(token):
         👨‍🏫 Teacher: {teacher.name}
         📅 Date: {sub_request.date.strftime('%Y-%m-%d')}
         ⏰ Time: {sub_request.time}
+        🔍 Reason: {sub_request.reason or 'Not specified'}
         📌 Details: {sub_request.details or 'No additional details provided'}
 
         ✅ Filled by: {logged_in_user.name} ({logged_in_user.email})
@@ -757,6 +796,7 @@ def view_sub_request(token):
 
         📅 Date: {sub_request.date.strftime('%Y-%m-%d')}
         ⏰ Time: {sub_request.time}
+        🔍 Reason: {sub_request.reason or 'Not specified'}
 
         ✅ Filled by: {logged_in_user.name}
         📧 Contact: {logged_in_user.email}
@@ -771,6 +811,7 @@ def view_sub_request(token):
         👨‍🏫 Teacher: {teacher.name}
         📅 Date: {sub_request.date.strftime('%Y-%m-%d')}
         ⏰ Time: {sub_request.time}
+        🔍 Reason: {sub_request.reason or 'Not specified'}
         📌 Details: {sub_request.details or 'No additional details provided'}
 
         ⚠️ Important: Please report to the front office at least 10 minutes before the scheduled time.
@@ -1049,6 +1090,7 @@ def edit_request(request_id):
             sub_request.date = datetime.strptime(request.form['date'], '%Y-%m-%d')
             sub_request.time = request.form['time']
             sub_request.details = request.form.get('details', '').strip()
+            sub_request.reason = request.form.get('reason', '')
 
             # Save changes
             db.session.commit()

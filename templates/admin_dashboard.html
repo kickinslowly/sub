@@ -229,6 +229,17 @@
                             </div>
 
                             <div class="mb-3">
+                                <label for="reason" class="form-label">Reason for Absence:</label>
+                                <select id="reason" name="reason" class="form-select" required>
+                                    <option value="" disabled selected>Select a reason</option>
+                                    <option value="Personal">Personal</option>
+                                    <option value="Medical">Medical</option>
+                                    <option value="Sickness">Sickness</option>
+                                    <option value="School Business">School Business</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
                                 <label for="details" class="form-label">Details:</label>
                                 <textarea id="details" name="details" class="form-control" rows="3" placeholder="Provide any additional information (optional)"></textarea>
                             </div>
@@ -329,6 +340,9 @@
                                                     {% endfor %}
                                                 </p>
                                                 <p class="mb-1"><strong><i class="bi bi-clock me-1"></i> Time:</strong> {{ request.time }}</p>
+                                                {% if request.reason %}
+                                                <p class="mb-1"><strong><i class="bi bi-exclamation-circle me-1"></i> Reason:</strong> {{ request.reason }}</p>
+                                                {% endif %}
                                             </div>
                                             <div class="col-md-6">
                                                 {% if request.status != "Open" and request.substitute_user %}
@@ -379,6 +393,9 @@
                                                     {% endfor %}
                                                 </p>
                                                 <p class="mb-1"><strong><i class="bi bi-clock me-1"></i> Time:</strong> {{ request.time }}</p>
+                                                {% if request.reason %}
+                                                <p class="mb-1"><strong><i class="bi bi-exclamation-circle me-1"></i> Reason:</strong> {{ request.reason }}</p>
+                                                {% endif %}
                                             </div>
                                             <div class="col-md-6">
                                                 {% if request.status != "Open" and request.substitute_user %}
