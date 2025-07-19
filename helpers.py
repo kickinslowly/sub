@@ -1,6 +1,58 @@
 from flask_mail import Message
-from extensions import mail, twilio_client  # Import 'mail' and 'twilio_client' from extensions.py
+from extensions import mail  # Import 'mail' from extensions.py
 from config import Config  # Import Config at the module level
+
+
+def filter_eligible_substitutes(teacher, substitutes):
+    """
+    Filters substitutes based on matching grades and subjects with the teacher.
+
+    Rules:
+    1. If a substitute has selected "All" for grades and "All" for subjects, they receive any request.
+    2. If the grade from the teacher does not match the grade preference of the substitute, 
+       the substitute does not get the request.
+    3. If the substitute has specified a subject and the teacher's subject is specific and doesn't match, 
+       the substitute does not get the request.
+
+    :param teacher: The teacher object
+    :param substitutes: List of substitute user objects
+    :return: Filtered list of eligible substitutes
+    """
+    eligible_substitutes = []
+
+    # Constants for "All" grade and subject IDs
+    ALL_GRADE_ID = 9  # ID for "All" grade
+    ALL_SUBJECT_ID = 8  # ID for "All" subject
+
+    for substitute in substitutes:
+        # Get the set of grade IDs and subject IDs for the substitute and teacher
+        sub_grade_ids = {grade.id for grade in substitute.grades}
+        sub_subject_ids = {subject.id for subject in substitute.subjects}
+        teacher_grade_ids = {grade.id for grade in teacher.grades}
+        teacher_subject_ids = {subject.id for subject in teacher.subjects}
+
+        # Rule 1: If substitute selected "All" for both grades and subjects
+        if ALL_GRADE_ID in sub_grade_ids and ALL_SUBJECT_ID in sub_subject_ids:
+            eligible_substitutes.append(substitute)
+            continue
+
+        # Check for grade match
+        grade_match = False
+        # If substitute has "All" grade or there's an overlap in grades
+        if ALL_GRADE_ID in sub_grade_ids or (sub_grade_ids and teacher_grade_ids and sub_grade_ids.intersection(teacher_grade_ids)):
+            grade_match = True
+
+        # Check for subject match
+        subject_match = False
+        # If substitute has "All" subject or there's an overlap in subjects
+        if ALL_SUBJECT_ID in sub_subject_ids or (sub_subject_ids and teacher_subject_ids and sub_subject_ids.intersection(teacher_subject_ids)):
+            subject_match = True
+
+        # If both grade and subject match, add to eligible substitutes
+        if grade_match and subject_match:
+            eligible_substitutes.append(substitute)
+
+    return eligible_substitutes
 
 
 def send_email(subject, recipient, body):
@@ -33,8 +85,8 @@ def send_sms(to_number, body):
         return False
 
     try:
-        # Import here to avoid circular imports
-        from app import twilio_initialized
+        # Use twilio_initialized from extensions.py
+        from extensions import twilio_initialized, twilio_client
 
         # Check if Twilio is properly initialized
         if not twilio_initialized:

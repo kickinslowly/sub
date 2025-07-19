@@ -182,6 +182,26 @@
             </div>
 
             <div class="form-group">
+                <label for="grade_id">Grade:</label>
+                <select id="grade_id" name="grade_id" class="form-control" required>
+                    <option value="" disabled {% if not edit_mode or not sub_request.grade_id %}selected{% endif %}>Select a grade</option>
+                    {% for grade in user.grades %}
+                    <option value="{{ grade.id }}" {% if edit_mode and sub_request.grade_id == grade.id %}selected{% endif %}>{{ grade.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="subject_id">Subject:</label>
+                <select id="subject_id" name="subject_id" class="form-control" required>
+                    <option value="" disabled {% if not edit_mode or not sub_request.subject_id %}selected{% endif %}>Select a subject</option>
+                    {% for subject in user.subjects %}
+                    <option value="{{ subject.id }}" {% if edit_mode and sub_request.subject_id == subject.id %}selected{% endif %}>{{ subject.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
                 <label>Time Range:</label>
                 <div class="time-range-container">
                     <div class="time-input">
@@ -255,7 +275,7 @@
                 noCalendar: true,
                 dateFormat: "h:i K", // 12-hour format with AM/PM
                 time_24hr: false,
-                minuteIncrement: 15,
+                minuteIncrement: 5,
                 allowInput: true
             };
 

@@ -3,9 +3,11 @@ from authlib.integrations.flask_client import OAuth
 from config import Config
 from datetime import datetime, timedelta
 from models import User, SubstituteRequest, Grade, Subject, user_grades, user_subjects # Import models
+from sqlalchemy.orm import aliased
 import uuid
 import sqlite3
 import os
+import sqlalchemy.exc  # Import SQLAlchemy exceptions
 from werkzeug.security import check_password_hash
 from twilio.rest import Client
 
@@ -20,18 +22,14 @@ mail.init_app(app)
 oauth = OAuth(app)
 
 # Initialize Twilio client
-twilio_initialized = False
 if hasattr(Config, 'TWILIO_ACCOUNT_SID') and hasattr(Config, 'TWILIO_AUTH_TOKEN'):
     if Config.TWILIO_ACCOUNT_SID and Config.TWILIO_AUTH_TOKEN and Config.TWILIO_PHONE_NUMBER:
-        try:
-            # Update the global twilio_client in extensions.py
-            import extensions
-            extensions.twilio_client = Client(Config.TWILIO_ACCOUNT_SID, Config.TWILIO_AUTH_TOKEN)
-            # Set twilio_initialized to True without making an API call
+        # Use the init_twilio function from extensions.py
+        from extensions import init_twilio
+        if init_twilio(Config.TWILIO_ACCOUNT_SID, Config.TWILIO_AUTH_TOKEN):
             print("Twilio client initialized successfully")
-            twilio_initialized = True
-        except Exception as e:
-            print(f"Failed to initialize Twilio client: {e}")
+        else:
+            print("Failed to initialize Twilio client")
             print("SMS functionality will be disabled")
     else:
         print("Twilio credentials are not properly configured. SMS functionality will be disabled.")
@@ -44,11 +42,18 @@ from helpers import send_email, send_sms
 print("Registering models...")
 # Wrap database queries in app.app_context() to ensure they work
 with app.app_context():
+    # Create all tables first
+    db.create_all()
+    print("Created all database tables")
+
     print("Registered tables in metadata:", db.metadata.tables.keys())
     try:
         print("Grades:", Grade.query.all())
     except Exception as e:
         print(f"Error querying Grades table: {e}")
+        # If there's an error, try to create the tables again
+        db.create_all()
+        print("Attempted to create tables again after error")
 
 def seed_database():
     """
@@ -107,7 +112,9 @@ def update_database_schema():
             db_path = db_uri.replace('sqlite:///', '')
             # Make it absolute if it's not already
             if not os.path.isabs(db_path):
-                db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), db_path)
+                # In Flask, relative database paths are relative to the instance directory
+                # Use Flask's instance_path attribute
+                db_path = os.path.join(app.instance_path, db_path)
         elif db_uri.startswith('sqlite:////'):
             # Absolute path
             db_path = db_uri.replace('sqlite:////', '')
@@ -136,7 +143,7 @@ def update_database_schema():
         print(f"Existing columns in substitute_request: {columns}")
 
         # Check if all required columns exist
-        required_columns = ['id', 'teacher_id', 'date', 'time', 'details', 'reason', 'status', 'substitute_id', 'token', 'created_at']
+        required_columns = ['id', 'teacher_id', 'date', 'time', 'details', 'reason', 'status', 'substitute_id', 'token', 'created_at', 'grade_id', 'subject_id']
         missing_columns = [col for col in required_columns if col not in columns]
 
         if missing_columns:
@@ -166,6 +173,28 @@ def update_database_schema():
                 except sqlite3.OperationalError as e:
                     print(f"Error adding created_at column: {e}")
 
+            # If 'grade_id' column is missing, try to add it
+            if 'grade_id' in missing_columns:
+                try:
+                    print("Adding grade_id column...")
+                    cursor.execute("ALTER TABLE substitute_request ADD COLUMN grade_id INTEGER")
+                    conn.commit()
+                    print("Added grade_id column to substitute_request table")
+                    missing_columns.remove('grade_id')
+                except sqlite3.OperationalError as e:
+                    print(f"Error adding grade_id column: {e}")
+
+            # If 'subject_id' column is missing, try to add it
+            if 'subject_id' in missing_columns:
+                try:
+                    print("Adding subject_id column...")
+                    cursor.execute("ALTER TABLE substitute_request ADD COLUMN subject_id INTEGER")
+                    conn.commit()
+                    print("Added subject_id column to substitute_request table")
+                    missing_columns.remove('subject_id')
+                except sqlite3.OperationalError as e:
+                    print(f"Error adding subject_id column: {e}")
+
             # If there are still missing columns that couldn't be added, drop and recreate the table
             if missing_columns:
                 print(f"Still missing columns: {missing_columns}. Will drop and recreate the table.")
@@ -189,7 +218,7 @@ def update_database_schema():
 
 # Add the seed function to the database initialization
 with app.app_context():
-    db.create_all()  # Create all necessary tables
+    # db.create_all() is already called at the beginning of the app
     update_database_schema()  # Update the database schema if needed
     seed_database()  # Seed the database with default data
 
@@ -212,7 +241,24 @@ def get_logged_in_user():
     """Helper function to retrieve the logged-in user from the session."""
     if 'user_info' not in session:
         return None
-    return User.query.filter_by(email=session['user_info']['email']).first()
+    
+    try:
+        return User.query.filter_by(email=session['user_info']['email']).first()
+    except sqlalchemy.exc.OperationalError as e:
+        # Handle database operational errors (like missing columns)
+        print(f"[Error] Database operational error in get_logged_in_user: {e}")
+        flash("A database error occurred. Please contact the administrator.")
+        return None
+    except sqlalchemy.exc.SQLAlchemyError as e:
+        # Handle other SQLAlchemy errors
+        print(f"[Error] Database error in get_logged_in_user: {e}")
+        flash("A database error occurred. Please contact the administrator.")
+        return None
+    except Exception as e:
+        # Handle any other unexpected errors
+        print(f"[Error] Unexpected error in get_logged_in_user: {e}")
+        flash("An unexpected error occurred. Please contact the administrator.")
+        return None
 
 
 def is_authenticated(required_role=None):
@@ -220,9 +266,26 @@ def is_authenticated(required_role=None):
     user_info = session.get('user_info')
     if not user_info:
         return False
-    if required_role and user_info.get('role') != required_role:
-        return False
-    return True
+        
+    # If no specific role is required, any authenticated user is allowed
+    if not required_role:
+        return True
+        
+    user_role = user_info.get('role')
+    
+    # Handle admin hierarchy
+    if required_role == 'admin':
+        # Both admin levels can access admin features
+        return user_role in ['admin_l1', 'admin_l2']
+    elif required_role == 'admin_l1':
+        # Only level 1 admins (tech coordinators) can access
+        return user_role == 'admin_l1'
+    elif required_role == 'admin_l2':
+        # Only level 2 admins can access
+        return user_role == 'admin_l2'
+    else:
+        # For other roles, exact match is required
+        return user_role == required_role
 
 
 # Routes
@@ -252,22 +315,52 @@ def authorized():
         token = google.authorize_access_token()
         user_info = google.get('userinfo').json()
 
-        # Look for existing user in the database
-        user = User.query.filter_by(email=user_info['email']).first()
+        try:
+            # Look for existing user in the database
+            user = User.query.filter_by(email=user_info['email']).first()
 
-        # Determine user role
-        role = 'admin' if user_info['email'] in app.config.get('ADMIN_EMAILS', []) else 'teacher'
+            # Determine user role
+            # Check if the email is in TECH_COORDINATOR_EMAILS (highest level admin)
+            if user_info['email'] in app.config.get('TECH_COORDINATOR_EMAILS', []):
+                role = 'admin_l1'  # Level 1 admin (tech coordinator)
+            # Check if the email is in ADMIN_EMAILS (level 2 admins)
+            elif user_info['email'] in app.config.get('ADMIN_EMAILS', []):
+                role = 'admin_l2'  # Level 2 admin (front office, principal)
+            # Check if the email contains 'substitute' or 'sub' to identify substitute teachers
+            elif 'substitute' in user_info['email'].lower() or 'sub' in user_info['email'].lower():
+                role = 'substitute'
+            else:
+                role = 'teacher'
 
-        # If user doesn't exist, create a new user
-        if not user:
-            user = User(email=user_info['email'], name=user_info.get('name', 'Unknown'), role=role)
-            db.session.add(user)
-        else:
-            # 🚨 Fix: Only update the role if the user is new, NOT if they already exist
-            if not user.role:  # If role is missing (unlikely), assign one
-                user.role = role
+            # If user doesn't exist, create a new user
+            if not user:
+                # Create new user with minimal required fields to avoid schema issues
+                new_user = User(
+                    email=user_info['email'],
+                    name=user_info.get('name', 'Unknown'),
+                    role=role
+                )
+                db.session.add(new_user)
+                user = new_user
+            else:
+                # Update role if it's missing or if it's the old 'admin' role that needs to be migrated
+                if not user.role or (user.role == 'admin' and role in ['admin_l1', 'admin_l2']):
+                    user.role = role
+                    print(f"[Debug] Updated user role from 'admin' to '{role}'")
 
-        db.session.commit()
+            db.session.commit()
+        except sqlalchemy.exc.OperationalError as e:
+            # Handle database operational errors (like missing columns)
+            print(f"[Error] Database operational error during user creation/update: {e}")
+            flash("A database error occurred during login. Please contact the administrator.")
+            db.session.rollback()
+            return redirect(url_for('index'))
+        except sqlalchemy.exc.SQLAlchemyError as e:
+            # Handle other SQLAlchemy errors
+            print(f"[Error] Database error during user creation/update: {e}")
+            flash("A database error occurred during login. Please contact the administrator.")
+            db.session.rollback()
+            return redirect(url_for('index'))
 
         # Store user information in the session
         session['user_info'] = {'email': user.email, 'role': user.role}
@@ -275,9 +368,25 @@ def authorized():
         print(f"[Debug] Role Assigned: {user.role}, Email: {user.email}")
 
         # Redirect to the correct dashboard based on role
-        return redirect(url_for('admin_dashboard' if user.role == 'admin' else (
-            'substitute_dashboard' if user.role == 'substitute' else 'dashboard')))
+        if user.role in ['admin_l1', 'admin_l2']:
+            return redirect(url_for('admin_dashboard'))
+        elif user.role == 'substitute':
+            return redirect(url_for('substitute_dashboard'))
+        else:
+            return redirect(url_for('dashboard'))
 
+    except ValueError as e:
+        flash('Invalid response from authentication server')
+        print(f"[Error] OAuth value error: {e}")
+        return redirect(url_for('index'))
+    except KeyError as e:
+        flash('Missing information in authentication response')
+        print(f"[Error] Missing key in OAuth response: {e}")
+        return redirect(url_for('index'))
+    except sqlalchemy.exc.SQLAlchemyError as e:
+        flash('Database error during login')
+        print(f"[Error] Database error: {e}")
+        return redirect(url_for('index'))
     except Exception as e:
         flash('Error during login')
         print(f"[Error] Login failed: {e}, User Info: {session.get('user_info', {})}")
@@ -292,65 +401,62 @@ def substitute_dashboard():
 
     logged_in_user = get_logged_in_user()
 
-    # Fetch all accepted requests and include teacher details
-    accepted_requests = db.session.query(
-        SubstituteRequest, User.name.label("teacher_name")
-    ).join(User, SubstituteRequest.teacher_id == User.id).filter(
-        SubstituteRequest.substitute_id == logged_in_user.id
-    ).order_by(SubstituteRequest.date.desc()).all()
+    # Check if logged_in_user is None
+    if logged_in_user is None:
+        flash("User not found. Please log in again.", "danger")
+        return redirect(url_for('login'))
 
-    # Fetch all open substitute requests
-    open_requests_query = db.session.query(
+    # Fetch all requests in a single query and then filter in Python
+    # This reduces the number of database queries
+    all_requests = db.session.query(
         SubstituteRequest, User.name.label("teacher_name"), User
     ).join(User, SubstituteRequest.teacher_id == User.id).filter(
-        SubstituteRequest.status == "Open"
-    ).order_by(SubstituteRequest.date.asc())
+        db.or_(
+            SubstituteRequest.substitute_id == logged_in_user.id,
+            SubstituteRequest.status == "Open"
+        )
+    ).order_by(SubstituteRequest.date.asc()).all()
 
-    # Get all open requests
-    all_open_requests = open_requests_query.all()
+    # Split the results into accepted and open requests
+    accepted_requests = [(req, teacher_name) for req, teacher_name, _ in all_requests 
+                         if req.substitute_id == logged_in_user.id]
+
+    # Filter open requests
+    all_open_requests = [(req, teacher_name, teacher) for req, teacher_name, teacher in all_requests 
+                         if req.status == "Open"]
 
     # Filter requests based on substitute's preferences
     matching_requests = []
+    
+    # Constants for "All" grade and subject IDs
+    ALL_GRADE_ID = 9  # ID for "All" grade
+    ALL_SUBJECT_ID = 8  # ID for "All" subject
 
     for request, teacher_name, teacher in all_open_requests:
-        # Check if the substitute has any grade preferences
-        sub_has_grade_preferences = len(logged_in_user.grades) > 0
+        # Get the set of grade IDs for the substitute and teacher
+        sub_grade_ids = {grade.id for grade in logged_in_user.grades}
+        teacher_grade_ids = {grade.id for grade in teacher.grades}
 
-        # Check if the substitute has any subject preferences
-        sub_has_subject_preferences = len(logged_in_user.subjects) > 0
+        # Get the set of subject IDs for the substitute and teacher
+        sub_subject_ids = {subject.id for subject in logged_in_user.subjects}
+        teacher_subject_ids = {subject.id for subject in teacher.subjects}
 
-        # If substitute has no preferences, show all requests
-        if not sub_has_grade_preferences and not sub_has_subject_preferences:
+        # Rule 1: If substitute selected "All" for both grades and subjects
+        if ALL_GRADE_ID in sub_grade_ids and ALL_SUBJECT_ID in sub_subject_ids:
             matching_requests.append((request, teacher_name, teacher))
             continue
 
         # Check for grade match
         grade_match = False
-        if not sub_has_grade_preferences:
-            # If substitute has no grade preferences, consider it a match
+        # If substitute has "All" grade or there's an overlap in grades
+        if ALL_GRADE_ID in sub_grade_ids or (sub_grade_ids and teacher_grade_ids and sub_grade_ids.intersection(teacher_grade_ids)):
             grade_match = True
-        else:
-            # Get the set of grade IDs for the substitute and teacher
-            sub_grade_ids = {grade.id for grade in logged_in_user.grades}
-            teacher_grade_ids = {grade.id for grade in teacher.grades}
-
-            # If there's any overlap or substitute has selected all grades, it's a match
-            if not teacher_grade_ids or not sub_grade_ids or sub_grade_ids.intersection(teacher_grade_ids):
-                grade_match = True
 
         # Check for subject match
         subject_match = False
-        if not sub_has_subject_preferences:
-            # If substitute has no subject preferences, consider it a match
+        # If substitute has "All" subject or there's an overlap in subjects
+        if ALL_SUBJECT_ID in sub_subject_ids or (sub_subject_ids and teacher_subject_ids and sub_subject_ids.intersection(teacher_subject_ids)):
             subject_match = True
-        else:
-            # Get the set of subject IDs for the substitute and teacher
-            sub_subject_ids = {subject.id for subject in logged_in_user.subjects}
-            teacher_subject_ids = {subject.id for subject in teacher.subjects}
-
-            # If there's any overlap or substitute has selected all subjects, it's a match
-            if not teacher_subject_ids or not sub_subject_ids or sub_subject_ids.intersection(teacher_subject_ids):
-                subject_match = True
 
         # If both grade and subject match, add to matching requests
         if grade_match and subject_match:
@@ -457,86 +563,89 @@ def api_teacher_bookings():
 @app.route('/admin_dashboard', methods=['GET'])
 def admin_dashboard():
     """Dashboard for admins."""
-    # Ensure user is authenticated and has admin role
+    # Ensure user is authenticated and has admin role (either level)
     if not is_authenticated(required_role='admin'):
         flash('Access denied. Admins only.')
         return redirect(url_for('index'))
+    
+    # Get the logged-in user to determine admin level
+    logged_in_user = get_logged_in_user()
+    is_tech_coordinator = logged_in_user.role == 'admin_l1'
 
     # Get all teachers for the create request form and display
     teachers = User.query.filter_by(role='teacher').order_by(User.name).all()
+
+    # Get all grades and subjects for the form
+    grades = Grade.query.order_by(Grade.id.asc()).all()
+    subjects = Subject.query.order_by(Subject.id.asc()).all()
 
     # Get search parameters from request
     search_keyword = request.args.get('search_keyword', '')
     search_date = request.args.get('search_date', '')
     search_status = request.args.get('search_status', '')
 
-    # Start with a base query
-    query = SubstituteRequest.query
+    # Create aliases for the User table to distinguish between teachers and substitutes
+    TeacherUser = aliased(User)
+    SubstituteUser = aliased(User)
+
+    # Start with a base query that joins with User table for both teacher and substitute
+    # This avoids multiple separate queries and joins
+    base_query = db.session.query(SubstituteRequest).\
+        join(TeacherUser, SubstituteRequest.teacher_id == TeacherUser.id).\
+        outerjoin(SubstituteUser, SubstituteRequest.substitute_id == SubstituteUser.id)
+
+    filters = []
 
     # Apply filters based on search parameters
     if search_keyword:
-        # Join with User table to search by teacher or substitute name
-        teacher_ids = db.session.query(User.id).filter(
-            User.name.ilike(f'%{search_keyword}%'),
-            User.role == 'teacher'
-        ).all()
-        teacher_ids = [id[0] for id in teacher_ids]
-
-        substitute_ids = db.session.query(User.id).filter(
-            User.name.ilike(f'%{search_keyword}%'),
-            User.role == 'substitute'
-        ).all()
-        substitute_ids = [id[0] for id in substitute_ids]
-
-        # Filter by teacher or substitute name
-        if teacher_ids and substitute_ids:
-            query = query.filter(
-                db.or_(
-                    SubstituteRequest.teacher_id.in_(teacher_ids),
-                    SubstituteRequest.substitute_id.in_(substitute_ids)
-                )
-            )
-        elif teacher_ids:
-            query = query.filter(SubstituteRequest.teacher_id.in_(teacher_ids))
-        elif substitute_ids:
-            query = query.filter(SubstituteRequest.substitute_id.in_(substitute_ids))
-        else:
-            # If no matching teachers or substitutes, return empty results
-            query = query.filter(SubstituteRequest.id == -1)  # This will return no results
+        # Search by teacher or substitute name in a single query
+        name_filter = db.or_(
+            TeacherUser.name.ilike(f'%{search_keyword}%'),
+            SubstituteUser.name.ilike(f'%{search_keyword}%')
+        )
+        filters.append(name_filter)
 
     # Filter by date if provided
     if search_date:
         try:
             search_date_obj = datetime.strptime(search_date, '%Y-%m-%d').date()
-            query = query.filter(SubstituteRequest.date == search_date_obj)
+            filters.append(SubstituteRequest.date == search_date_obj)
         except ValueError:
             # If date format is invalid, ignore this filter
             pass
 
     # Filter by status if provided
     if search_status:
-        query = query.filter(SubstituteRequest.status == search_status)
+        filters.append(SubstituteRequest.status == search_status)
+
+    # Apply all filters to the query
+    if filters:
+        for f in filters:
+            base_query = base_query.filter(f)
 
     # If no search parameters are provided, separate by recent/older
     if not (search_keyword or search_date or search_status):
         cutoff_date = datetime.utcnow() - timedelta(days=15)
-        recent_requests = query.filter(
+        recent_requests = base_query.filter(
             SubstituteRequest.date >= cutoff_date
         ).order_by(SubstituteRequest.date.asc()).all()
-        older_requests = query.filter(
+        older_requests = base_query.filter(
             SubstituteRequest.date < cutoff_date
         ).order_by(SubstituteRequest.date.desc()).all()
     else:
         # If search parameters are provided, show all matching results as recent
-        recent_requests = query.order_by(SubstituteRequest.date.desc()).all()
+        recent_requests = base_query.order_by(SubstituteRequest.date.desc()).all()
         older_requests = []
 
     return render_template(
         'admin_dashboard.html',
-        user=session['user_info'],
+        user=logged_in_user,
         recent_requests=recent_requests,
         older_requests=older_requests,
         teachers=teachers,
+        grades=grades,
+        subjects=subjects,
+        is_tech_coordinator=is_tech_coordinator,  # Pass this to the template
         request=request  # Pass the request object to access args in the template
     )
 
@@ -556,12 +665,32 @@ def admin_create_request():
         time = request.form['time']
         details = request.form.get('details', '')
         reason = request.form.get('reason', '')
+        grade_id = request.form.get('grade_id')
+        subject_id = request.form.get('subject_id')
 
         # Validate teacher exists
         teacher = User.query.filter_by(id=teacher_id, role='teacher').first()
         if not teacher:
             flash('Invalid teacher selected.')
             return redirect(url_for('admin_dashboard'))
+            
+        # If grade_id is not provided, try to get it from the teacher's profile
+        if not grade_id and teacher.grades:
+            # If teacher has only one grade, use that grade
+            if len(teacher.grades) == 1:
+                grade_id = teacher.grades[0].id
+            # Otherwise, use the first grade (if any)
+            elif len(teacher.grades) > 1:
+                grade_id = teacher.grades[0].id
+                
+        # If subject_id is not provided, try to get it from the teacher's profile
+        if not subject_id and teacher.subjects:
+            # If teacher has only one subject, use that subject
+            if len(teacher.subjects) == 1:
+                subject_id = teacher.subjects[0].id
+            # Otherwise, use the first subject (if any)
+            elif len(teacher.subjects) > 1:
+                subject_id = teacher.subjects[0].id
 
         # Generate unique token
         token = str(uuid.uuid4())
@@ -573,6 +702,8 @@ def admin_create_request():
             time=time,
             details=details.strip(),
             reason=reason,
+            grade_id=grade_id,
+            subject_id=subject_id,
             token=token
         )
         db.session.add(sub_request)
@@ -581,25 +712,24 @@ def admin_create_request():
         # Generate dynamic link
         request_link = url_for('view_sub_request', token=token, _external=True)
 
-        # Get teacher's grades and subjects
-        teacher_grades = [grade.id for grade in teacher.grades]
-        teacher_subjects = [subject.id for subject in teacher.subjects]
-
-        # Find eligible substitutes (matching grades and subjects)
-        eligible_substitutes = []
+        # Get all substitutes
         all_substitutes = User.query.filter_by(role='substitute').all()
 
-        for substitute in all_substitutes:
-            sub_grades = [grade.id for grade in substitute.grades]
-            sub_subjects = [subject.id for subject in substitute.subjects]
+        # Use the helper function to filter eligible substitutes
+        from helpers import filter_eligible_substitutes
+        eligible_substitutes = filter_eligible_substitutes(teacher, all_substitutes)
 
-            # Check if there's any overlap in grades and subjects
-            if (set(teacher_grades) & set(sub_grades)) and (set(teacher_subjects) & set(sub_subjects)):
-                eligible_substitutes.append(substitute)
-
-        # If no eligible substitutes found, use all substitutes
-        if not eligible_substitutes:
-            eligible_substitutes = all_substitutes
+        # Get grade and subject names
+        grade_name = "Not specified"
+        subject_name = "Not specified"
+        if grade_id:
+            grade = Grade.query.get(grade_id)
+            if grade:
+                grade_name = grade.name
+        if subject_id:
+            subject = Subject.query.get(subject_id)
+            if subject:
+                subject_name = subject.name
 
         # Send notification with link to eligible substitutes
         subject = "New Substitute Request Available"
@@ -611,6 +741,8 @@ def admin_create_request():
             📅 Date: {date}
             ⏰ Time: {time}
             👨‍🏫 Teacher: {teacher.name}
+            📚 Grade: {grade_name}
+            📖 Subject: {subject_name}
             📌 Details: {details or 'No additional details provided'}
 
             👉 Accept the request here: {request_link}
@@ -619,7 +751,7 @@ def admin_create_request():
 
             # Send SMS to eligible substitutes with phones
             if substitute.phone:
-                sms_body = f"New sub request: Teacher {teacher.name}, Date {date}, Time {time}. Accept at: {request_link}"
+                sms_body = f"New sub request: Teacher {teacher.name}, Date {date}, Time {time}, Grade {grade_name}, Subject {subject_name}. Accept at: {request_link}"
                 send_sms(substitute.phone, sms_body)
 
         # Send notification to admin via email
@@ -630,13 +762,15 @@ def admin_create_request():
         👨‍🏫 Teacher: {teacher.name}
         📅 Date: {date}
         ⏰ Time: {time}
+        📚 Grade: {grade_name}
+        📖 Subject: {subject_name}
         📌 Details: {details or 'No additional details provided'}
         """
         for admin_email in Config.ADMIN_EMAILS:
             send_email(admin_subject, admin_email, admin_email_body)
 
         # Send SMS notification to admin
-        admin_sms_body = f"New sub request: Teacher {teacher.name}, Date {date}, Time {time}, Reason {reason or 'Not specified'}"
+        admin_sms_body = f"New sub request: Teacher {teacher.name}, Date {date}, Time {time}, Grade {grade_name}, Subject {subject_name}, Reason {reason or 'Not specified'}"
         if hasattr(Config, 'ADMIN_PHONE_NUMBERS'):
             for admin_phone in Config.ADMIN_PHONE_NUMBERS:
                 send_sms(admin_phone, admin_sms_body)
@@ -646,7 +780,7 @@ def admin_create_request():
             teacher_sms_body = "Sub Request submitted successfully."
             send_sms(teacher.phone, teacher_sms_body)
 
-        flash('Substitute request created successfully! Notification sent to all substitutes.')
+        flash('Substitute request created successfully! Notification sent to matching substitutes.')
 
     except Exception as e:
         flash('An error occurred while creating the request.')
@@ -658,7 +792,11 @@ def admin_create_request():
 @app.route('/request', methods=['GET', 'POST'])
 def request_form_and_submit():
     if request.method == 'GET':
-        return render_template('request.html')
+        # Get the logged-in user to pass to the template
+        logged_in_user = get_logged_in_user()
+        if not logged_in_user:
+            return redirect(url_for('index'))
+        return render_template('request.html', user=logged_in_user)
 
     elif request.method == 'POST':
         if 'user_info' not in session:
@@ -675,37 +813,81 @@ def request_form_and_submit():
             if teacher:
                 token = str(uuid.uuid4())  # Generate unique token
 
-                # Create and save substitute request
-                sub_request = SubstituteRequest(
-                    teacher_id=teacher.id,
-                    date=datetime.strptime(date, '%Y-%m-%d'),
-                    time=time,
-                    details=details.strip(),
-                    reason=reason,
-                    token=token
-                )
-                db.session.add(sub_request)
-                db.session.commit()
+                # Get grade and subject IDs from the form or auto-select if teacher has only one
+                grade_id = request.form.get('grade_id')
+                subject_id = request.form.get('subject_id')
+                
+                # If grade_id is not provided and teacher has exactly one grade, use that grade
+                if not grade_id and len(teacher.grades) == 1:
+                    grade_id = teacher.grades[0].id
+                
+                # If subject_id is not provided and teacher has exactly one subject, use that subject
+                if not subject_id and len(teacher.subjects) == 1:
+                    subject_id = teacher.subjects[0].id
+
+                try:
+                    # Create and save substitute request
+                    sub_request = SubstituteRequest(
+                        teacher_id=teacher.id,
+                        date=datetime.strptime(date, '%Y-%m-%d'),
+                        time=time,
+                        details=details.strip(),
+                        reason=reason,
+                        grade_id=grade_id,
+                        subject_id=subject_id,
+                        token=token
+                    )
+                    db.session.add(sub_request)
+                    db.session.commit()
+                except ValueError as e:
+                    flash('Invalid date format. Please use YYYY-MM-DD format.')
+                    print(f"Date parsing error: {e}")
+                    return redirect(url_for('request_form_and_submit'))
+                except sqlalchemy.exc.SQLAlchemyError as e:
+                    flash('Database error while saving request.')
+                    print(f"Database error: {e}")
+                    return redirect(url_for('dashboard'))
 
                 # **Generate dynamic link**
                 request_link = url_for('view_sub_request', token=token, _external=True)
 
-                # **Send notification with link**
-                substitutes = User.query.filter_by(role='substitute').all()
+                # Get all substitutes
+                all_substitutes = User.query.filter_by(role='substitute').all()
+
+                # Use the helper function to filter eligible substitutes
+                from helpers import filter_eligible_substitutes
+                eligible_substitutes = filter_eligible_substitutes(teacher, all_substitutes)
+
+                # **Send notification with link to eligible substitutes**
                 subject = "New Substitute Request Available"
 
-                for substitute in substitutes:
+                notification_errors = []
+                # Get grade and subject names
+                grade_name = "Not specified"
+                subject_name = "Not specified"
+                if grade_id:
+                    grade = Grade.query.get(grade_id)
+                    if grade:
+                        grade_name = grade.name
+                if subject_id:
+                    subject = Subject.query.get(subject_id)
+                    if subject:
+                        subject_name = subject.name
+                        
+                for substitute in eligible_substitutes:
                     email_body = f"""
                     A new substitute request has been posted:
 
                     📅 Date: {date}
                     ⏰ Time: {time}
-                    🔍 Reason: {reason or 'Not specified'}
+                    📚 Grade: {grade_name}
+                    📖 Subject: {subject_name}
                     📌 Details: {details or 'No additional details provided'}
 
                     👉 Accept the request here: {request_link}
                     """
-                    send_email(subject, substitute.email, email_body)
+                    if not send_email(subject, substitute.email, email_body):
+                        notification_errors.append(f"Failed to send email to {substitute.email}")
 
                 # Send notification to admin via email
                 admin_subject = "New Substitute Request Created"
@@ -715,30 +897,43 @@ def request_form_and_submit():
                 👨‍🏫 Teacher: {teacher.name}
                 📅 Date: {date}
                 ⏰ Time: {time}
+                📚 Grade: {grade_name}
+                📖 Subject: {subject_name}
                 🔍 Reason: {reason or 'Not specified'}
                 📌 Details: {details or 'No additional details provided'}
                 """
                 for admin_email in Config.ADMIN_EMAILS:
-                    send_email(admin_subject, admin_email, admin_email_body)
+                    if not send_email(admin_subject, admin_email, admin_email_body):
+                        notification_errors.append(f"Failed to send email to admin {admin_email}")
 
                 # Send SMS notification to admin
-                admin_sms_body = f"New sub request: Teacher {teacher.name}, Date {date}, Time {time}, Reason {reason or 'Not specified'}"
+                admin_sms_body = f"New sub request: Teacher {teacher.name}, Date {date}, Time {time}, Grade {grade_name}, Subject {subject_name}, Reason {reason or 'Not specified'}"
                 if hasattr(Config, 'ADMIN_PHONE_NUMBERS'):
                     for admin_phone in Config.ADMIN_PHONE_NUMBERS:
-                        send_sms(admin_phone, admin_sms_body)
+                        if not send_sms(admin_phone, admin_sms_body):
+                            notification_errors.append(f"Failed to send SMS to admin {admin_phone}")
 
                 # Send SMS confirmation to teacher
                 if teacher.phone:
                     teacher_sms_body = "Sub Request submitted successfully."
-                    send_sms(teacher.phone, teacher_sms_body)
+                    if not send_sms(teacher.phone, teacher_sms_body):
+                        notification_errors.append(f"Failed to send SMS to teacher {teacher.phone}")
 
-                flash('Substitute request submitted successfully! Notification sent.')
+                if notification_errors:
+                    print("Notification errors:", notification_errors)
+                    flash('Substitute request submitted successfully, but some notifications failed to send.')
+                else:
+                    flash('Substitute request submitted successfully! Notification sent to matching substitutes.')
             else:
                 flash('Error: Could not find your user account.')
 
+        except KeyError as e:
+            flash('Missing required field in form submission.')
+            print(f"Form field error: {e}")
+            return redirect(url_for('request_form_and_submit'))
         except Exception as e:
             flash('An error occurred while submitting the request.')
-            print(f"Error: {e}")
+            print(f"Unexpected error: {e}")
 
         return redirect(url_for('dashboard'))
 
@@ -817,14 +1012,12 @@ def view_sub_request(token):
         ⚠️ Important: Please report to the front office at least 10 minutes before the scheduled time.
         """
 
-        # Add grade and subject information if available
-        if teacher.grades:
-            grade_names = ", ".join([grade.name for grade in teacher.grades])
-            sub_email_body += f"\n📚 Grade(s): {grade_names}"
+        # Add grade and subject information from the request
+        if sub_request.grade:
+            sub_email_body += f"\n📚 Grade: {sub_request.grade.name}"
 
-        if teacher.subjects:
-            subject_names = ", ".join([subject.name for subject in teacher.subjects])
-            sub_email_body += f"\n📖 Subject(s): {subject_names}"
+        if sub_request.subject:
+            sub_email_body += f"\n📖 Subject: {sub_request.subject.name}"
 
         send_email(sub_subject, logged_in_user.email, sub_email_body)
 
@@ -846,6 +1039,69 @@ def view_sub_request(token):
                           substitute=substitute)
 
 
+@app.route('/manage_admins', methods=['GET'])
+def manage_admins():
+    """Route for tech coordinators to manage level 2 admins."""
+    # Ensure user is authenticated and has tech coordinator role
+    if not is_authenticated(required_role='admin_l1'):
+        flash('Access denied. Tech Coordinators only.')
+        return redirect(url_for('index'))
+    
+    # Get all level 2 admins
+    admins = User.query.filter_by(role='admin_l2').order_by(User.name).all()
+    
+    return render_template(
+        'manage_admins.html',
+        admins=admins,
+        user=session['user_info']
+    )
+
+
+@app.route('/add_admin', methods=['POST'])
+def add_admin():
+    """Route for tech coordinators to create level 2 admin accounts."""
+    # Ensure user is authenticated and has tech coordinator role
+    if not is_authenticated(required_role='admin_l1'):
+        flash('Access denied. Tech Coordinators only.')
+        return redirect(url_for('index'))
+    
+    # Get form data
+    name = request.form.get('name')
+    email = request.form.get('email')
+    phone = request.form.get('phone')
+    admin_type = request.form.get('admin_type', 'front_office')  # front_office or principal
+    
+    # Validate required inputs
+    if not name or not email:
+        flash('Name and email are required!')
+        return redirect(url_for('manage_admins'))
+    
+    # Check for duplicate email
+    existing_user = User.query.filter_by(email=email).first()
+    if existing_user:
+        flash('A user with this email already exists!')
+        return redirect(url_for('manage_admins'))
+    
+    # Create the new admin user
+    logged_in_user = get_logged_in_user()
+    new_admin = User(
+        name=name,
+        email=email,
+        role='admin_l2',
+        phone=phone,
+        created_by=logged_in_user.id if logged_in_user else None
+    )
+    
+    # Add and commit changes to the database
+    db.session.add(new_admin)
+    db.session.commit()
+    
+    # Flash a success message
+    flash(f'Admin {name} ({email}) added successfully!')
+    
+    return redirect(url_for('manage_admins'))
+
+
 @app.route('/manage_users', methods=['GET'])
 def manage_users():
     # Ensure user is authenticated
@@ -853,9 +1109,117 @@ def manage_users():
         flash('Please log in to access this page.')
         return redirect(url_for('index'))
 
-    # Fetch all teachers and substitutes from the database
-    teachers = User.query.filter_by(role='teacher').order_by(User.id.asc()).all()
-    substitutes = User.query.filter_by(role='substitute').order_by(User.id.asc()).all()
+    # Get sort parameters from query string
+    sort_by = request.args.get('sort_by', 'id')
+    sort_order = request.args.get('sort_order', 'asc')
+
+    # Base queries for teachers and substitutes
+    teachers_query = User.query.filter_by(role='teacher')
+    substitutes_query = User.query.filter_by(role='substitute')
+
+    # Initialize teachers and substitutes with default values
+    # in case there's an error in the sorting logic
+    teachers = teachers_query.all()
+    substitutes = substitutes_query.all()
+
+    # Handle sorting based on sort_by parameter
+    if sort_by == 'name':
+        sort_attr = User.name
+    elif sort_by == 'email':
+        sort_attr = User.email
+    elif sort_by == 'grade':
+        # For grade sorting, we'll need to handle it differently
+        # First, get all users with their first grade name
+        from sqlalchemy import func, case, select
+        from sqlalchemy.orm import aliased
+
+        # Get the first grade name for each user
+        grade_alias = aliased(Grade)
+        grade_subq = (
+            select(
+                user_grades.c.user_id,
+                func.min(grade_alias.name).label('first_grade_name')
+            )
+            .select_from(
+                user_grades.join(
+                    grade_alias,
+                    user_grades.c.grade_id == grade_alias.id
+                )
+            )
+            .group_by(user_grades.c.user_id)
+            .alias('grade_subq')
+        )
+
+        # Apply sorting to both queries
+        teachers_query = teachers_query.outerjoin(
+            grade_subq,
+            User.id == grade_subq.c.user_id
+        ).order_by(
+            grade_subq.c.first_grade_name.desc() if sort_order == 'desc' else grade_subq.c.first_grade_name
+        )
+
+        substitutes_query = substitutes_query.outerjoin(
+            grade_subq,
+            User.id == grade_subq.c.user_id
+        ).order_by(
+            grade_subq.c.first_grade_name.desc() if sort_order == 'desc' else grade_subq.c.first_grade_name
+        )
+
+        # Execute queries
+        teachers = teachers_query.all()
+        substitutes = substitutes_query.all()
+    elif sort_by == 'subject':
+        # For subject sorting, similar to grade sorting
+        from sqlalchemy import func, case, select
+        from sqlalchemy.orm import aliased
+
+        # Get the first subject name for each user
+        subject_alias = aliased(Subject)
+        subject_subq = (
+            select(
+                user_subjects.c.user_id,
+                func.min(subject_alias.name).label('first_subject_name')
+            )
+            .select_from(
+                user_subjects.join(
+                    subject_alias,
+                    user_subjects.c.subject_id == subject_alias.id
+                )
+            )
+            .group_by(user_subjects.c.user_id)
+            .alias('subject_subq')
+        )
+
+        # Apply sorting to both queries
+        teachers_query = teachers_query.outerjoin(
+            subject_subq,
+            User.id == subject_subq.c.user_id
+        ).order_by(
+            subject_subq.c.first_subject_name.desc() if sort_order == 'desc' else subject_subq.c.first_subject_name
+        )
+
+        substitutes_query = substitutes_query.outerjoin(
+            subject_subq,
+            User.id == subject_subq.c.user_id
+        ).order_by(
+            subject_subq.c.first_subject_name.desc() if sort_order == 'desc' else subject_subq.c.first_subject_name
+        )
+
+        # Execute queries
+        teachers = teachers_query.all()
+        substitutes = substitutes_query.all()
+    else:  # Default to id or other simple columns
+        sort_attr = User.id if sort_by == 'id' else getattr(User, sort_by, User.id)
+
+        # Apply sort order
+        if sort_order == 'desc':
+            sort_attr = sort_attr.desc()
+        else:
+            sort_attr = sort_attr.asc()
+
+        # Execute queries with sorting
+        teachers = teachers_query.order_by(sort_attr).all()
+        substitutes = substitutes_query.order_by(sort_attr).all()
 
     # Fetch all grades and subjects from the database
     grades = Grade.query.order_by(Grade.id.asc()).all()
@@ -868,7 +1232,11 @@ def manage_users():
         substitutes=substitutes,
         grades=grades,
         subjects=subjects,
-        user=session['user_info']
+        user=session['user_info'],
+        sort_by=sort_by,
+        sort_order=sort_order,
+        errors={},  # Add empty errors object to prevent Jinja2 from throwing an error
+        formData={'grades': [], 'subjects': []}  # Add empty formData object to prevent Jinja2 from throwing an error
     )
 
 
@@ -936,14 +1304,12 @@ def accept_sub_request(token):
     ⚠️ Important: Please report to the front office at least 10 minutes before the scheduled time.
     """
 
-    # Add grade and subject information if available
-    if teacher.grades:
-        grade_names = ", ".join([grade.name for grade in teacher.grades])
-        sub_email_body += f"\n📚 Grade(s): {grade_names}"
+    # Add grade and subject information from the request
+    if sub_request.grade:
+        sub_email_body += f"\n📚 Grade: {sub_request.grade.name}"
 
-    if teacher.subjects:
-        subject_names = ", ".join([subject.name for subject in teacher.subjects])
-        sub_email_body += f"\n📖 Subject(s): {subject_names}"
+    if sub_request.subject:
+        sub_email_body += f"\n📖 Subject: {sub_request.subject.name}"
 
     send_email(sub_subject, logged_in_user.email, sub_email_body)
 
@@ -1091,6 +1457,8 @@ def edit_request(request_id):
             sub_request.time = request.form['time']
             sub_request.details = request.form.get('details', '').strip()
             sub_request.reason = request.form.get('reason', '')
+            sub_request.grade_id = request.form.get('grade_id')
+            sub_request.subject_id = request.form.get('subject_id')
 
             # Save changes
             db.session.commit()
@@ -1147,17 +1515,23 @@ def delete_user(user_id):
     # Find the user to delete
     user = User.query.get_or_404(user_id)
 
-    # Handle substitute requests where this user is a teacher
-    teacher_requests = SubstituteRequest.query.filter_by(teacher_id=user.id).all()
-    for req in teacher_requests:
-        db.session.delete(req)
+    # Handle all substitute requests related to this user in a single query
+    # This is more efficient than making separate queries
+    all_requests = SubstituteRequest.query.filter(
+        db.or_(
+            SubstituteRequest.teacher_id == user.id,
+            SubstituteRequest.substitute_id == user.id
+        )
+    ).all()
 
-    # Handle substitute requests where this user is a substitute
-    substitute_requests = SubstituteRequest.query.filter_by(substitute_id=user.id).all()
-    for req in substitute_requests:
-        # Just remove the substitute assignment, don't delete the request
-        req.substitute_id = None
-        req.status = 'Open'
+    for req in all_requests:
+        if req.teacher_id == user.id:
+            # If user is the teacher, delete the request
+            db.session.delete(req)
+        elif req.substitute_id == user.id:
+            # If user is the substitute, just remove the assignment
+            req.substitute_id = None
+            req.status = 'Open'
 
     # Delete the user
     db.session.delete(user)
@@ -1165,3 +1539,8 @@ def delete_user(user_id):
 
     flash(f"User '{user.name}' has been removed successfully.")
     return redirect(url_for('manage_users'))
+
+
+# Run the application if this file is executed directly
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)

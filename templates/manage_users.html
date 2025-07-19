@@ -4,53 +4,103 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Users</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <!-- Font Awesome for backward compatibility -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Vue.js -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <style>
+        :root {
+            --primary-color: #4e73df;
+            --secondary-color: #858796;
+            --success-color: #1cc88a;
+            --info-color: #36b9cc;
+            --warning-color: #f6c23e;
+            --danger-color: #e74a3b;
+            --light-color: #f8f9fc;
+            --dark-color: #5a5c69;
+        }
+
         body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
+            font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f8f9fc;
+            color: #5a5c69;
+            padding: 1.5rem;
         }
 
-        h1, h2 {
-            color: #333;
+        .page-header {
+            background-color: white;
+            box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+            border-radius: 0.35rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
         }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-            margin-bottom: 20px;
-        }
-
-        table, th, td {
-            border: 1px solid #ccc;
-        }
-
-        th, td {
-            padding: 10px;
-            text-align: left;
-        }
-
-        th {
-            background-color: #f5f5f5;
-        }
-
-        .action-buttons {
-            display: flex;
-            gap: 10px;
-        }
-
-        .action-buttons button {
-            padding: 5px 10px;
-            background-color: #007BFF;
+        .card {
+            box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
             border: none;
-            color: white;
-            border-radius: 5px;
-            cursor: pointer;
+            border-radius: 0.35rem;
+            margin-bottom: 1.5rem;
         }
 
-        .action-buttons button:hover {
-            background-color: #0056b3;
+        .card-header {
+            background-color: #f8f9fc;
+            border-bottom: 1px solid #e3e6f0;
+            font-weight: bold;
+            color: #4e73df;
+        }
+
+        .table {
+            margin-bottom: 0;
+        }
+
+        .table th {
+            background-color: #f8f9fc;
+            color: #4e73df;
+            font-weight: bold;
+        }
+
+        .btn-primary {
+            background-color: #4e73df;
+            border-color: #4e73df;
+        }
+
+        .btn-primary:hover {
+            background-color: #2e59d9;
+            border-color: #2653d4;
+        }
+
+        .btn-success {
+            background-color: #1cc88a;
+            border-color: #1cc88a;
+        }
+
+        .btn-success:hover {
+            background-color: #17a673;
+            border-color: #169b6b;
+        }
+
+        .btn-danger {
+            background-color: #e74a3b;
+            border-color: #e74a3b;
+        }
+
+        .btn-danger:hover {
+            background-color: #d52a1a;
+            border-color: #c9271a;
+        }
+
+        .btn-secondary {
+            background-color: #858796;
+            border-color: #858796;
+        }
+
+        .btn-secondary:hover {
+            background-color: #717384;
+            border-color: #6b6d7d;
         }
 
         .delete-btn {
@@ -60,9 +110,14 @@
             background: none;
             border: none;
             cursor: pointer;
-            color: #6b0f0f; /* Desaturated deep dark red */
+            color: #e74a3b;
             opacity: 0.8;
             font-size: 0.8em;
+            padding: 0.25rem;
+        }
+
+        .delete-btn:hover {
+            opacity: 1;
         }
 
         .delete-btn i {
@@ -70,425 +125,923 @@
             margin-bottom: 3px;
         }
 
-        .add-user-container {
-            margin-bottom: 20px;
-        }
-
-        .add-user-container button {
-            padding: 10px 20px;
-            background-color: #28a745;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            font-size: 16px;
-            cursor: pointer;
-        }
-
-        .add-user-container button:hover {
-            background-color: #218838;
-        }
-
-        .history-btn {
-            padding: 5px 10px;
-            background-color: #6c757d;
-            border: none;
-            color: white;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-
-        .history-btn:hover {
-            background-color: #5a6268;
-        }
-
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            overflow: auto;
-            background-color: rgba(0, 0, 0, 0.4);
-            align-items: center;
-            justify-content: center;
-        }
-
         .modal-content {
-            background-color: #fff;
-            margin: auto;
-            padding: 20px;
-            border: 1px solid #888;
-            width: 400px;
-            border-radius: 10px;
-        }
-
-        .modal h2 {
-            margin-top: 0;
-        }
-
-        .modal-content form {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .modal-content label {
-            margin-top: 10px;
-        }
-
-        .modal-content input, .modal-content select {
-            padding: 10px;
-            margin-top: 5px;
-        }
-
-        .modal-content button {
-            margin-top: 15px;
-            padding: 10px;
             border: none;
-            border-radius: 5px;
-            font-size: 14px;
-            cursor: pointer;
+            border-radius: 0.35rem;
         }
 
-        .modal-content .submit-btn {
-            background-color: #007BFF;
-            color: #fff;
+        .modal-header {
+            background-color: #f8f9fc;
+            border-bottom: 1px solid #e3e6f0;
+            color: #4e73df;
         }
 
-        .modal-content .submit-btn:hover {
-            background-color: #0056b3;
+        .modal-footer {
+            border-top: 1px solid #e3e6f0;
         }
 
-        .modal-content .cancel-btn {
-            background-color: #f44336;
-            color: #fff;
+        /* Animation classes for Vue transitions */
+        .fade-enter-active,
+        .fade-leave-active {
+            transition: opacity 0.3s ease;
+        }
+        .fade-enter-from,
+        .fade-leave-to {
+            opacity: 0;
         }
 
-        .modal-content .cancel-btn:hover {
-            background-color: #d32f2f;
+        /* Form validation styles */
+        .is-invalid {
+            border-color: var(--danger-color);
+        }
+        .invalid-feedback {
+            display: block;
+            color: var(--danger-color);
+            font-size: 0.875em;
+            margin-top: 0.25rem;
+        }
+
+        /* Checkbox group styling */
+        .checkbox-group {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ced4da;
+            border-radius: 0.25rem;
+            padding: 0.5rem;
         }
     </style>
 </head>
 <body>
-    <header>
-        <h1>Manage Users</h1>
-    </header>
+    <div class="container-fluid">
+        <!-- Page Header -->
+        <div class="page-header d-flex justify-content-between align-items-center">
+            <h1 class="h3 mb-0 text-gray-800">
+                <i class="bi bi-people-fill me-2"></i>Manage Users
+            </h1>
+            <div class="d-flex align-items-center">
+                <span class="me-3">Welcome, {{ user['name'] }}</span>
+                <a href="{{ url_for('admin_dashboard') }}" class="btn btn-primary">
+                    <i class="bi bi-speedometer2 me-1"></i> Back to Dashboard
+                </a>
+            </div>
+        </div>
 
-    <div class="add-user-container">
-        <button id="add-user-btn">Add User</button>
-    </div>
+        <!-- Add User Button -->
+        <div class="mb-4">
+            <button id="add-user-btn" class="btn btn-success">
+                <i class="bi bi-person-plus-fill me-1"></i> Add User
+            </button>
+        </div>
 
-    <!-- Add User Modal -->
-    <div id="add-user-modal" class="modal">
-        <div class="modal-content">
-            <h2>Add User</h2>
-            <form id="add-user-form" method="POST" action="{{ url_for('add_user') }}">
-                <label for="name">Name:</label>
-                <input type="text" id="name" name="name" required>
+    <!-- Add User Modal - Vue Component -->
+    <div id="add-user-modal-app">
+        <div class="modal fade" id="add-user-modal" tabindex="-1" aria-labelledby="addUserModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="addUserModalLabel">
+                            <i class="bi bi-person-plus-fill me-2"></i>Add User
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" @click="resetForm"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="add-user-form" @submit.prevent="submitForm" method="POST" action="{{ url_for('add_user') }}">
+                            <div class="mb-3">
+                                <label for="name" class="form-label">Name:</label>
+                                <input 
+                                    type="text" 
+                                    class="form-control" 
+                                    :class="{'is-invalid': errors.name}" 
+                                    id="name" 
+                                    name="name" 
+                                    v-model="formData.name" 
+                                    @input="validateName"
+                                    required>
+                                <div class="invalid-feedback" v-if="errors.name">
+                                    {{ errors.name }}
+                                </div>
+                            </div>
 
-                <label for="email">Email:</label>
-                <input type="email" id="email" name="email" required>
+                            <div class="mb-3">
+                                <label for="email" class="form-label">Email:</label>
+                                <input 
+                                    type="email" 
+                                    class="form-control" 
+                                    :class="{'is-invalid': errors.email}" 
+                                    id="email" 
+                                    name="email" 
+                                    v-model="formData.email" 
+                                    @input="validateEmail"
+                                    required>
+                                <div class="invalid-feedback" v-if="errors.email">
+                                    {{ errors.email }}
+                                </div>
+                            </div>
 
-                <label for="role">Role:</label>
-                <select id="role" name="role">
-                    <option value="teacher">Teacher</option>
-                    <option value="substitute">Substitute</option>
-                </select>
+                            <div class="mb-3">
+                                <label for="role" class="form-label">Role:</label>
+                                <select 
+                                    class="form-select" 
+                                    id="role" 
+                                    name="role" 
+                                    v-model="formData.role">
+                                    <option value="teacher">Teacher</option>
+                                    <option value="substitute">Substitute</option>
+                                </select>
+                            </div>
 
-                <label for="grades">Grades:</label>
-                <div id="grades">
-                    {% for grade in grades %}
-                    <label>
-                        <input type="checkbox" name="grades" value="{{ grade.id }}">
-                        {{ grade.name }}
-                    </label>
-                    {% endfor %}
+                            <div class="mb-3">
+                                <label class="form-label">Grades:</label>
+                                <div class="checkbox-group">
+                                    <div class="row row-cols-2 g-2">
+                                        {% for grade in grades %}
+                                        <div class="col">
+                                            <div class="form-check">
+                                                <input 
+                                                    class="form-check-input" 
+                                                    type="checkbox" 
+                                                    name="grades" 
+                                                    value="{{ grade.id }}" 
+                                                    id="grade-{{ grade.id }}"
+                                                    v-model="formData.grades"
+                                                    :value="{{ grade.id }}">
+                                                <label class="form-check-label" for="grade-{{ grade.id }}">
+                                                    {{ grade.name }}
+                                                </label>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                <div class="form-text mt-1">
+                                    <span v-if="formData.grades.length > 0">
+                                        Selected: {{ formData.grades.length }} grade(s)
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Subjects:</label>
+                                <div class="checkbox-group">
+                                    <div class="row row-cols-2 g-2">
+                                        {% for subject in subjects %}
+                                        <div class="col">
+                                            <div class="form-check">
+                                                <input 
+                                                    class="form-check-input" 
+                                                    type="checkbox" 
+                                                    name="subjects" 
+                                                    value="{{ subject.id }}" 
+                                                    id="subject-{{ subject.id }}"
+                                                    v-model="formData.subjects"
+                                                    :value="{{ subject.id }}">
+                                                <label class="form-check-label" for="subject-{{ subject.id }}">
+                                                    {{ subject.name }}
+                                                </label>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                <div class="form-text mt-1">
+                                    <span v-if="formData.subjects.length > 0">
+                                        Selected: {{ formData.subjects.length }} subject(s)
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="phone" class="form-label">Phone:</label>
+                                <input 
+                                    type="text" 
+                                    class="form-control" 
+                                    :class="{'is-invalid': errors.phone}" 
+                                    id="phone" 
+                                    name="phone" 
+                                    v-model="formData.phone"
+                                    @input="validatePhone">
+                                <div class="invalid-feedback" v-if="errors.phone">
+                                    {{ errors.phone }}
+                                </div>
+                                <div class="form-text" v-if="!errors.phone && formData.phone">
+                                    Format: (123) 456-7890
+                                </div>
+                            </div>
+
+                            <div class="modal-footer px-0 pb-0">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" @click="resetForm">Cancel</button>
+                                <button 
+                                    type="submit" 
+                                    class="btn btn-success" 
+                                    :disabled="!isFormValid || isSubmitting">
+                                    <span v-if="isSubmitting">
+                                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                        Processing...
+                                    </span>
+                                    <span v-else>
+                                        <i class="bi bi-person-plus-fill me-1"></i>Add User
+                                    </span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
-
-                <label for="subjects">Subjects (Optional):</label>
-                <div id="subjects">
-                    {% for subject in subjects %}
-                    <label>
-                        <input type="checkbox" name="subjects" value="{{ subject.id }}">
-                        {{ subject.name }}
-                    </label>
-                    {% endfor %}
-                </div>
-
-                <label for="phone">Phone:</label>
-                <input type="text" id="phone" name="phone">
-
-                <div>
-                    <button type="submit" class="submit-btn">Add User</button>
-                    <button type="button" class="cancel-btn" id="cancel-add-user-btn">Cancel</button>
-                </div>
-            </form>
+            </div>
         </div>
     </div>
 
-    <!-- Edit User Modal -->
-    <div id="edit-user-modal" class="modal">
-        <div class="modal-content">
-            <h2>Edit User</h2>
-            <form id="edit-user-form" method="POST">
-    <label for="edit-name">Name:</label>
-    <input type="text" id="edit-name" name="name" required>
+    <!-- Edit User Modal - Vue Component -->
+    <div id="edit-user-modal-app">
+        <div class="modal fade" id="edit-user-modal" tabindex="-1" aria-labelledby="editUserModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="editUserModalLabel">
+                            <i class="bi bi-pencil-square me-2"></i>Edit User
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" @click="resetForm"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="edit-user-form" @submit.prevent="submitForm" method="POST" :action="formAction">
+                            <div class="mb-3">
+                                <label for="edit-name" class="form-label">Name:</label>
+                                <input 
+                                    type="text" 
+                                    class="form-control" 
+                                    :class="{'is-invalid': errors.name}" 
+                                    id="edit-name" 
+                                    name="name" 
+                                    v-model="formData.name" 
+                                    @input="validateName"
+                                    required>
+                                <div class="invalid-feedback" v-if="errors.name">
+                                    {{ errors.name }}
+                                </div>
+                            </div>
 
-    <label for="edit-email">Email:</label>
-    <input type="email" id="edit-email" name="email" required>
+                            <div class="mb-3">
+                                <label for="edit-email" class="form-label">Email:</label>
+                                <input 
+                                    type="email" 
+                                    class="form-control" 
+                                    :class="{'is-invalid': errors.email}" 
+                                    id="edit-email" 
+                                    name="email" 
+                                    v-model="formData.email" 
+                                    @input="validateEmail"
+                                    required>
+                                <div class="invalid-feedback" v-if="errors.email">
+                                    {{ errors.email }}
+                                </div>
+                            </div>
 
-    <label for="edit-role">Role:</label>
-    <select id="edit-role" name="role">
-        <option value="teacher">Teacher</option>
-        <option value="substitute">Substitute</option>
-    </select>
+                            <div class="mb-3">
+                                <label for="edit-role" class="form-label">Role:</label>
+                                <select 
+                                    class="form-select" 
+                                    id="edit-role" 
+                                    name="role" 
+                                    v-model="formData.role">
+                                    <option value="teacher">Teacher</option>
+                                    <option value="substitute">Substitute</option>
+                                </select>
+                            </div>
 
-    <label for="edit-grades">Grades:</label>
-    <div>
-        {% for grade in grades %}
-        <label>
-            <input type="checkbox" value="{{ grade.id }}" name="grades">
-            {{ grade.name }}
-        </label>
-        {% endfor %}
-    </div>
+                            <div class="mb-3">
+                                <label class="form-label">Grades:</label>
+                                <div class="checkbox-group">
+                                    <div class="row row-cols-2 g-2">
+                                        {% for grade in grades %}
+                                        <div class="col">
+                                            <div class="form-check">
+                                                <input 
+                                                    class="form-check-input" 
+                                                    type="checkbox" 
+                                                    name="grades" 
+                                                    value="{{ grade.id }}" 
+                                                    id="edit-grade-{{ grade.id }}"
+                                                    v-model="formData.grades"
+                                                    :value="{{ grade.id }}">
+                                                <label class="form-check-label" for="edit-grade-{{ grade.id }}">
+                                                    {{ grade.name }}
+                                                </label>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                <div class="form-text mt-1">
+                                    <span v-if="formData.grades.length > 0">
+                                        Selected: {{ formData.grades.length }} grade(s)
+                                    </span>
+                                </div>
+                            </div>
 
-    <label for="edit-subjects">Subjects:</label>
-    <div>
-        {% for subject in subjects %}
-        <label>
-            <input type="checkbox" value="{{ subject.id }}" name="subjects">
-            {{ subject.name }}
-        </label>
-        {% endfor %}
-    </div>
+                            <div class="mb-3">
+                                <label class="form-label">Subjects:</label>
+                                <div class="checkbox-group">
+                                    <div class="row row-cols-2 g-2">
+                                        {% for subject in subjects %}
+                                        <div class="col">
+                                            <div class="form-check">
+                                                <input 
+                                                    class="form-check-input" 
+                                                    type="checkbox" 
+                                                    name="subjects" 
+                                                    value="{{ subject.id }}" 
+                                                    id="edit-subject-{{ subject.id }}"
+                                                    v-model="formData.subjects"
+                                                    :value="{{ subject.id }}">
+                                                <label class="form-check-label" for="edit-subject-{{ subject.id }}">
+                                                    {{ subject.name }}
+                                                </label>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                <div class="form-text mt-1">
+                                    <span v-if="formData.subjects.length > 0">
+                                        Selected: {{ formData.subjects.length }} subject(s)
+                                    </span>
+                                </div>
+                            </div>
 
-    <label for="edit-phone">Phone:</label>
-    <input type="text" id="edit-phone" name="phone">
+                            <div class="mb-3">
+                                <label for="edit-phone" class="form-label">Phone:</label>
+                                <input 
+                                    type="text" 
+                                    class="form-control" 
+                                    :class="{'is-invalid': errors.phone}" 
+                                    id="edit-phone" 
+                                    name="phone" 
+                                    v-model="formData.phone"
+                                    @input="validatePhone">
+                                <div class="invalid-feedback" v-if="errors.phone">
+                                    {{ errors.phone }}
+                                </div>
+                                <div class="form-text" v-if="!errors.phone && formData.phone">
+                                    Format: (123) 456-7890
+                                </div>
+                            </div>
 
-    <!-- Hidden input to store user_id -->
-    <input type="hidden" id="edit-user-id" name="user_id">
+                            <!-- Hidden input to store user_id -->
+                            <input type="hidden" id="edit-user-id" name="user_id" v-model="formData.userId">
 
-    <div>
-        <button type="submit" class="submit-btn">Save Changes</button>
-        <button type="button" class="cancel-btn" id="cancel-edit-user-btn">Cancel</button>
-    </div>
-</form>
+                            <div class="modal-footer px-0 pb-0">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" @click="resetForm">Cancel</button>
+                                <button 
+                                    type="submit" 
+                                    class="btn btn-primary" 
+                                    :disabled="!isFormValid || isSubmitting">
+                                    <span v-if="isSubmitting">
+                                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                        Processing...
+                                    </span>
+                                    <span v-else>
+                                        <i class="bi bi-save me-1"></i>Save Changes
+                                    </span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
     <!-- Delete User Confirmation Modal -->
-    <div id="delete-user-modal" class="modal">
-        <div class="modal-content">
-            <h2>Confirm Delete</h2>
-            <p>Are you sure you want to remove <span id="delete-user-name"></span>?</p>
-            <p>This action cannot be undone.</p>
-            <form id="delete-user-form" method="POST">
-                <!-- Hidden input to store user_id -->
-                <input type="hidden" id="delete-user-id" name="user_id">
-                <div>
-                    <button type="submit" class="submit-btn">Delete User</button>
-                    <button type="button" class="cancel-btn" id="cancel-delete-user-btn">Cancel</button>
+    <div class="modal fade" id="delete-user-modal" tabindex="-1" aria-labelledby="deleteUserModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deleteUserModalLabel"><i class="bi bi-exclamation-triangle-fill me-2 text-danger"></i>Confirm Delete</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" id="cancel-delete-user-btn"></button>
                 </div>
-            </form>
+                <div class="modal-body">
+                    <p>Are you sure you want to remove <strong><span id="delete-user-name"></span></strong>?</p>
+                    <p class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>This action cannot be undone.</p>
+                    <form id="delete-user-form" method="POST">
+                        <!-- Hidden input to store user_id -->
+                        <input type="hidden" id="delete-user-id" name="user_id">
+
+                        <div class="modal-footer px-0 pb-0">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="cancel-delete-user-btn-footer">Cancel</button>
+                            <button type="submit" class="btn btn-danger"><i class="bi bi-trash me-1"></i>Delete User</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
 
     <!-- Teachers Section -->
-    <section>
-        <h2>Teachers</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>Phone</th>
-                    <th>Grades</th>
-                    <th>Subjects</th>
-                    <th>History</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for teacher in teachers %}
-                <tr>
-                    <td>{{ teacher.id }}</td>
-                    <td>{{ teacher.name }}</td>
-                    <td>{{ teacher.email }}</td>
-                    <td>{{ teacher.role }}</td>
-                    <td>{{ teacher.phone or "N/A" }}</td>
-                    <td>
-                        {% for grade in teacher.grades %}
-                        {{ grade.name }}{% if not loop.last %}, {% endif %}
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+                <i class="bi bi-person-workspace me-1"></i> Teachers
+            </div>
+            <div>
+                <span class="badge bg-primary">{{ teachers|length }} Total</span>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>
+                                <a href="{{ url_for('manage_users', sort_by='name', sort_order='asc' if sort_by != 'name' or sort_order == 'desc' else 'desc') }}" class="text-decoration-none text-primary">
+                                    Name
+                                    {% if sort_by == 'name' %}
+                                        <i class="bi bi-arrow-{{ 'down' if sort_order == 'asc' else 'up' }}"></i>
+                                    {% endif %}
+                                </a>
+                            </th>
+                            <th>
+                                <a href="{{ url_for('manage_users', sort_by='email', sort_order='asc' if sort_by != 'email' or sort_order == 'desc' else 'desc') }}" class="text-decoration-none text-primary">
+                                    Email
+                                    {% if sort_by == 'email' %}
+                                        <i class="bi bi-arrow-{{ 'down' if sort_order == 'asc' else 'up' }}"></i>
+                                    {% endif %}
+                                </a>
+                            </th>
+                            <th>Phone</th>
+                            <th>
+                                <a href="{{ url_for('manage_users', sort_by='grade', sort_order='asc' if sort_by != 'grade' or sort_order == 'desc' else 'desc') }}" class="text-decoration-none text-primary">
+                                    Grades
+                                    {% if sort_by == 'grade' %}
+                                        <i class="bi bi-arrow-{{ 'down' if sort_order == 'asc' else 'up' }}"></i>
+                                    {% endif %}
+                                </a>
+                            </th>
+                            <th>
+                                <a href="{{ url_for('manage_users', sort_by='subject', sort_order='asc' if sort_by != 'subject' or sort_order == 'desc' else 'desc') }}" class="text-decoration-none text-primary">
+                                    Subjects
+                                    {% if sort_by == 'subject' %}
+                                        <i class="bi bi-arrow-{{ 'down' if sort_order == 'asc' else 'up' }}"></i>
+                                    {% endif %}
+                                </a>
+                            </th>
+                            <th>History</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for teacher in teachers %}
+                        <tr>
+                            <td>{{ teacher.id }}</td>
+                            <td>{{ teacher.name }}</td>
+                            <td>{{ teacher.email }}</td>
+                            <td>{{ teacher.phone or "N/A" }}</td>
+                            <td>
+                                {% for grade in teacher.grades %}
+                                <span class="badge bg-light text-dark">{{ grade.name }}</span>
+                                {% endfor %}
+                            </td>
+                            <td>
+                                {% for subject in teacher.subjects %}
+                                <span class="badge bg-light text-dark">{{ subject.name }}</span>
+                                {% endfor %}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('user_profile', user_id=teacher.id) }}" class="btn btn-sm btn-secondary">
+                                    <i class="bi bi-clock-history me-1"></i>History
+                                </a>
+                            </td>
+                            <td>
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-sm btn-primary edit-btn"
+                                            data-user-id="{{ teacher.id }}"
+                                            data-user-name="{{ teacher.name }}"
+                                            data-user-email="{{ teacher.email }}"
+                                            data-user-role="{{ teacher.role }}"
+                                            data-user-phone="{{ teacher.phone }}"
+                                            data-user-grades="{{ teacher.grades|map(attribute='id')|list|tojson }}"
+                                            data-user-subjects="{{ teacher.subjects|map(attribute='id')|list|tojson }}">
+                                        <i class="bi bi-pencil-square me-1"></i>Edit
+                                    </button>
+                                    {% if user['role'] == 'admin_l1' or user['role'] == 'admin_l2' %}
+                                    <button class="btn btn-sm btn-outline-danger delete-btn" 
+                                            data-user-id="{{ teacher.id }}" 
+                                            data-user-name="{{ teacher.name }}">
+                                        <i class="bi bi-trash me-1"></i>Delete
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
                         {% endfor %}
-                    </td>
-                    <td>
-                        {% for subject in teacher.subjects %}
-                        {{ subject.name }}{% if not loop.last %}, {% endif %}
-                        {% endfor %}
-                    </td>
-                    <td>
-                        <a href="{{ url_for('user_profile', user_id=teacher.id) }}" class="history-btn">View History</a>
-                    </td>
-                    <td class="action-buttons">
-                        <button class="edit-btn"
-                                data-user-id="{{ teacher.id }}"
-                                data-user-name="{{ teacher.name }}"
-                                data-user-email="{{ teacher.email }}"
-                                data-user-role="{{ teacher.role }}"
-                                data-user-phone="{{ teacher.phone }}">Edit</button>
-                        {% if user.role == 'admin' %}
-                        <button class="delete-btn" data-user-id="{{ teacher.id }}" data-user-name="{{ teacher.name }}">
-                            <i class="fas fa-trash-alt"></i>
-                            <span>remove user</span>
-                        </button>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </section>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 
     <!-- Substitutes Section -->
-    <section>
-        <h2>Substitutes</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>Phone</th>
-                    <th>Grades</th>
-                    <th>Subjects</th>
-                    <th>History</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for substitute in substitutes %}
-                <tr>
-                    <td>{{ substitute.id }}</td>
-                    <td>{{ substitute.name }}</td>
-                    <td>{{ substitute.email }}</td>
-                    <td>{{ substitute.role }}</td>
-                    <td>{{ substitute.phone or "N/A" }}</td>
-                    <td>
-                        {% for grade in substitute.grades %}
-                        {{ grade.name }}{% if not loop.last %}, {% endif %}
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+                <i class="bi bi-person-badge me-1"></i> Substitutes
+            </div>
+            <div>
+                <span class="badge bg-success">{{ substitutes|length }} Total</span>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>
+                                <a href="{{ url_for('manage_users', sort_by='name', sort_order='asc' if sort_by != 'name' or sort_order == 'desc' else 'desc') }}" class="text-decoration-none text-primary">
+                                    Name
+                                    {% if sort_by == 'name' %}
+                                        <i class="bi bi-arrow-{{ 'down' if sort_order == 'asc' else 'up' }}"></i>
+                                    {% endif %}
+                                </a>
+                            </th>
+                            <th>
+                                <a href="{{ url_for('manage_users', sort_by='email', sort_order='asc' if sort_by != 'email' or sort_order == 'desc' else 'desc') }}" class="text-decoration-none text-primary">
+                                    Email
+                                    {% if sort_by == 'email' %}
+                                        <i class="bi bi-arrow-{{ 'down' if sort_order == 'asc' else 'up' }}"></i>
+                                    {% endif %}
+                                </a>
+                            </th>
+                            <th>Phone</th>
+                            <th>
+                                <a href="{{ url_for('manage_users', sort_by='grade', sort_order='asc' if sort_by != 'grade' or sort_order == 'desc' else 'desc') }}" class="text-decoration-none text-primary">
+                                    Grades
+                                    {% if sort_by == 'grade' %}
+                                        <i class="bi bi-arrow-{{ 'down' if sort_order == 'asc' else 'up' }}"></i>
+                                    {% endif %}
+                                </a>
+                            </th>
+                            <th>
+                                <a href="{{ url_for('manage_users', sort_by='subject', sort_order='asc' if sort_by != 'subject' or sort_order == 'desc' else 'desc') }}" class="text-decoration-none text-primary">
+                                    Subjects
+                                    {% if sort_by == 'subject' %}
+                                        <i class="bi bi-arrow-{{ 'down' if sort_order == 'asc' else 'up' }}"></i>
+                                    {% endif %}
+                                </a>
+                            </th>
+                            <th>History</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for substitute in substitutes %}
+                        <tr>
+                            <td>{{ substitute.id }}</td>
+                            <td>{{ substitute.name }}</td>
+                            <td>{{ substitute.email }}</td>
+                            <td>{{ substitute.phone or "N/A" }}</td>
+                            <td>
+                                {% for grade in substitute.grades %}
+                                <span class="badge bg-light text-dark">{{ grade.name }}</span>
+                                {% endfor %}
+                            </td>
+                            <td>
+                                {% for subject in substitute.subjects %}
+                                <span class="badge bg-light text-dark">{{ subject.name }}</span>
+                                {% endfor %}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('user_profile', user_id=substitute.id) }}" class="btn btn-sm btn-secondary">
+                                    <i class="bi bi-clock-history me-1"></i>History
+                                </a>
+                            </td>
+                            <td>
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-sm btn-primary edit-btn"
+                                            data-user-id="{{ substitute.id }}"
+                                            data-user-name="{{ substitute.name }}"
+                                            data-user-email="{{ substitute.email }}"
+                                            data-user-role="{{ substitute.role }}"
+                                            data-user-phone="{{ substitute.phone }}"
+                                            data-user-grades="{{ substitute.grades|map(attribute='id')|list|tojson }}"
+                                            data-user-subjects="{{ substitute.subjects|map(attribute='id')|list|tojson }}">
+                                        <i class="bi bi-pencil-square me-1"></i>Edit
+                                    </button>
+                                    {% if user['role'] == 'admin_l1' or user['role'] == 'admin_l2' %}
+                                    <button class="btn btn-sm btn-outline-danger delete-btn" 
+                                            data-user-id="{{ substitute.id }}" 
+                                            data-user-name="{{ substitute.name }}">
+                                        <i class="bi bi-trash me-1"></i>Delete
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
                         {% endfor %}
-                    </td>
-                    <td>
-                        {% for subject in substitute.subjects %}
-                        {{ subject.name }}{% if not loop.last %}, {% endif %}
-                        {% endfor %}
-                    </td>
-                    <td>
-                        <a href="{{ url_for('user_profile', user_id=substitute.id) }}" class="history-btn">View History</a>
-                    </td>
-                    <td class="action-buttons">
-                        <button class="edit-btn"
-                                data-user-id="{{ substitute.id }}"
-                                data-user-name="{{ substitute.name }}"
-                                data-user-email="{{ substitute.email }}"
-                                data-user-role="{{ substitute.role }}"
-                                data-user-phone="{{ substitute.phone }}">Edit</button>
-                        {% if user.role == 'admin' %}
-                        <button class="delete-btn" data-user-id="{{ substitute.id }}" data-user-name="{{ substitute.name }}">
-                            <i class="fas fa-trash-alt"></i>
-                            <span>remove user</span>
-                        </button>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </section>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
-        // Open add user modal
-        const addUserBtn = document.getElementById('add-user-btn');
-        const addUserModal = document.getElementById('add-user-modal');
-        const cancelAddUserBtn = document.getElementById('cancel-add-user-btn');
+        // Initialize Bootstrap modals
+        let addUserModal, editUserModal, deleteUserModal;
 
-        addUserBtn.addEventListener('click', () => {
-            addUserModal.style.display = 'flex';
+        // Create Add User Vue App
+        const addUserApp = Vue.createApp({
+            data() {
+                return {
+                    formData: {
+                        name: '',
+                        email: '',
+                        role: 'teacher',
+                        grades: [],
+                        subjects: [],
+                        phone: ''
+                    },
+                    errors: {
+                        name: '',
+                        email: '',
+                        phone: ''
+                    },
+                    isSubmitting: false
+                };
+            },
+            computed: {
+                isFormValid() {
+                    return this.formData.name && 
+                           this.formData.email && 
+                           !this.errors.name && 
+                           !this.errors.email && 
+                           !this.errors.phone;
+                }
+            },
+            methods: {
+                validateName() {
+                    if (!this.formData.name) {
+                        this.errors.name = 'Name is required';
+                    } else if (this.formData.name.length < 2) {
+                        this.errors.name = 'Name must be at least 2 characters';
+                    } else {
+                        this.errors.name = '';
+                    }
+                },
+                validateEmail() {
+                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                    if (!this.formData.email) {
+                        this.errors.email = 'Email is required';
+                    } else if (!emailRegex.test(this.formData.email)) {
+                        this.errors.email = 'Please enter a valid email address';
+                    } else {
+                        this.errors.email = '';
+                    }
+                },
+                validatePhone() {
+                    if (!this.formData.phone) {
+                        this.errors.phone = '';
+                        return;
+                    }
+
+                    // Remove all non-digit characters for validation
+                    const digitsOnly = this.formData.phone.replace(/\D/g, '');
+
+                    if (digitsOnly.length !== 10) {
+                        this.errors.phone = 'Phone number must be 10 digits';
+                    } else {
+                        // Format the phone number as (XXX) XXX-XXXX
+                        this.formData.phone = `(${digitsOnly.substring(0, 3)}) ${digitsOnly.substring(3, 6)}-${digitsOnly.substring(6)}`;
+                        this.errors.phone = '';
+                    }
+                },
+                resetForm() {
+                    this.formData = {
+                        name: '',
+                        email: '',
+                        role: 'teacher',
+                        grades: [],
+                        subjects: [],
+                        phone: ''
+                    };
+                    this.errors = {
+                        name: '',
+                        email: '',
+                        phone: ''
+                    };
+                    this.isSubmitting = false;
+                },
+                submitForm() {
+                    // Validate all fields before submission
+                    this.validateName();
+                    this.validateEmail();
+                    this.validatePhone();
+
+                    if (!this.isFormValid) {
+                        return;
+                    }
+
+                    this.isSubmitting = true;
+
+                    // Submit the form
+                    document.getElementById('add-user-form').submit();
+                }
+            }
+        }).mount('#add-user-modal-app');
+
+        // Create Edit User Vue App
+        const editUserApp = Vue.createApp({
+            data() {
+                return {
+                    formData: {
+                        userId: '',
+                        name: '',
+                        email: '',
+                        role: 'teacher',
+                        grades: [],
+                        subjects: [],
+                        phone: ''
+                    },
+                    errors: {
+                        name: '',
+                        email: '',
+                        phone: ''
+                    },
+                    isSubmitting: false,
+                    formAction: ''
+                };
+            },
+            computed: {
+                isFormValid() {
+                    return this.formData.name && 
+                           this.formData.email && 
+                           !this.errors.name && 
+                           !this.errors.email && 
+                           !this.errors.phone;
+                }
+            },
+            methods: {
+                validateName() {
+                    if (!this.formData.name) {
+                        this.errors.name = 'Name is required';
+                    } else if (this.formData.name.length < 2) {
+                        this.errors.name = 'Name must be at least 2 characters';
+                    } else {
+                        this.errors.name = '';
+                    }
+                },
+                validateEmail() {
+                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                    if (!this.formData.email) {
+                        this.errors.email = 'Email is required';
+                    } else if (!emailRegex.test(this.formData.email)) {
+                        this.errors.email = 'Please enter a valid email address';
+                    } else {
+                        this.errors.email = '';
+                    }
+                },
+                validatePhone() {
+                    if (!this.formData.phone) {
+                        this.errors.phone = '';
+                        return;
+                    }
+
+                    // Remove all non-digit characters for validation
+                    const digitsOnly = this.formData.phone.replace(/\D/g, '');
+
+                    if (digitsOnly.length !== 10) {
+                        this.errors.phone = 'Phone number must be 10 digits';
+                    } else {
+                        // Format the phone number as (XXX) XXX-XXXX
+                        this.formData.phone = `(${digitsOnly.substring(0, 3)}) ${digitsOnly.substring(3, 6)}-${digitsOnly.substring(6)}`;
+                        this.errors.phone = '';
+                    }
+                },
+                resetForm() {
+                    this.formData = {
+                        userId: '',
+                        name: '',
+                        email: '',
+                        role: 'teacher',
+                        grades: [],
+                        subjects: [],
+                        phone: ''
+                    };
+                    this.errors = {
+                        name: '',
+                        email: '',
+                        phone: ''
+                    };
+                    this.isSubmitting = false;
+                    this.formAction = '';
+                },
+                setUserData(userData) {
+                    this.formData.userId = userData.userId;
+                    this.formData.name = userData.name;
+                    this.formData.email = userData.email;
+                    this.formData.role = userData.role;
+                    this.formData.phone = userData.phone || '';
+                    this.formData.grades = userData.grades || [];
+                    this.formData.subjects = userData.subjects || [];
+                    this.formAction = `/edit_user/${userData.userId}`;
+                },
+                submitForm() {
+                    // Validate all fields before submission
+                    this.validateName();
+                    this.validateEmail();
+                    this.validatePhone();
+
+                    if (!this.isFormValid) {
+                        return;
+                    }
+
+                    this.isSubmitting = true;
+
+                    // Submit the form
+                    document.getElementById('edit-user-form').submit();
+                }
+            }
+        }).mount('#edit-user-modal-app');
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize Bootstrap modals
+            addUserModal = new bootstrap.Modal(document.getElementById('add-user-modal'));
+            editUserModal = new bootstrap.Modal(document.getElementById('edit-user-modal'));
+            deleteUserModal = new bootstrap.Modal(document.getElementById('delete-user-modal'));
+
+            // Add User Modal
+            const addUserBtn = document.getElementById('add-user-btn');
+
+            addUserBtn.addEventListener('click', () => {
+                // Reset the form before showing the modal
+                addUserApp.resetForm();
+                addUserModal.show();
+            });
+
+            // Edit User Modal
+            const editButtons = document.querySelectorAll('.edit-btn');
+
+            editButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const userId = button.dataset.userId;
+                    const userName = button.dataset.userName;
+                    const userEmail = button.dataset.userEmail;
+                    const userRole = button.dataset.userRole;
+                    const userPhone = button.dataset.userPhone;
+
+                    // Get the user's grades and subjects from data attributes
+                    let userGrades = [];
+                    let userSubjects = [];
+
+                    try {
+                        // Parse the JSON data from the data attributes
+                        userGrades = JSON.parse(button.dataset.userGrades || '[]');
+                        userSubjects = JSON.parse(button.dataset.userSubjects || '[]');
+                    } catch (e) {
+                        console.error('Error parsing grades or subjects:', e);
+                    }
+
+                    // Set the user data in the Vue app
+                    editUserApp.setUserData({
+                        userId: userId,
+                        name: userName,
+                        email: userEmail,
+                        role: userRole,
+                        phone: userPhone || '',
+                        grades: userGrades,
+                        subjects: userSubjects
+                    });
+
+                    // Show the modal
+                    editUserModal.show();
+                });
+            });
+
+            // Delete User Modal
+            const deleteButtons = document.querySelectorAll('.delete-btn');
+            const deleteUserName = document.getElementById('delete-user-name');
+            const deleteUserId = document.getElementById('delete-user-id');
+            const deleteUserForm = document.getElementById('delete-user-form');
+
+            deleteButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const userId = button.dataset.userId;
+                    const userName = button.dataset.userName;
+
+                    // Populate modal with user details
+                    deleteUserId.value = userId;
+                    deleteUserName.textContent = userName;
+
+                    // Dynamically set the form action
+                    deleteUserForm.action = `/delete_user/${userId}`;
+
+                    // Show the modal
+                    deleteUserModal.show();
+                });
+            });
         });
-
-        cancelAddUserBtn.addEventListener('click', () => {
-            addUserModal.style.display = 'none';
-        });
-
-        // Open edit user modal
-const editButtons = document.querySelectorAll('.edit-btn');
-const editModal = document.getElementById('edit-user-modal');
-const editName = document.getElementById('edit-name');
-const editEmail = document.getElementById('edit-email');
-const editRole = document.getElementById('edit-role');
-const editPhone = document.getElementById('edit-phone');
-const editUserId = document.getElementById('edit-user-id');
-const editUserForm = document.getElementById('edit-user-form'); // Get the form reference
-const cancelEditUserBtn = document.getElementById('cancel-edit-user-btn');
-
-editButtons.forEach(button => {
-    button.addEventListener('click', () => {
-        const userId = button.dataset.userId;
-        const userName = button.dataset.userName;
-        const userEmail = button.dataset.userEmail;
-        const userRole = button.dataset.userRole;
-        const userPhone = button.dataset.userPhone;
-
-        // Populate form fields with user details
-        editUserId.value = userId;
-        editName.value = userName;
-        editEmail.value = userEmail;
-        editRole.value = userRole;
-        editPhone.value = userPhone;
-
-        // Dynamically set the form action
-        editUserForm.action = `/edit_user/${userId}`;
-
-        editModal.style.display = 'flex';
-    });
-});
-
-cancelEditUserBtn.addEventListener('click', () => {
-    editModal.style.display = 'none';
-});
-
-// Delete user functionality
-const deleteButtons = document.querySelectorAll('.delete-btn');
-const deleteModal = document.getElementById('delete-user-modal');
-const deleteUserName = document.getElementById('delete-user-name');
-const deleteUserId = document.getElementById('delete-user-id');
-const deleteUserForm = document.getElementById('delete-user-form');
-const cancelDeleteUserBtn = document.getElementById('cancel-delete-user-btn');
-
-deleteButtons.forEach(button => {
-    button.addEventListener('click', () => {
-        const userId = button.dataset.userId;
-        const userName = button.dataset.userName;
-
-        // Populate modal with user details
-        deleteUserId.value = userId;
-        deleteUserName.textContent = userName;
-
-        // Dynamically set the form action
-        deleteUserForm.action = `/delete_user/${userId}`;
-
-        deleteModal.style.display = 'flex';
-    });
-});
-
-cancelDeleteUserBtn.addEventListener('click', () => {
-    deleteModal.style.display = 'none';
-});
     </script>
+    </div> <!-- Close container-fluid -->
 </body>
 </html>

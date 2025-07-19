@@ -32,9 +32,12 @@ class User(db.Model):
     id = Column(Integer, primary_key=True)
     name = db.Column(db.String(120))
     email = Column(String(120), unique=True, nullable=False)
-    role = Column(String(20), nullable=False)
+    role = Column(String(20), nullable=False)  # 'teacher', 'substitute', 'admin_l1', 'admin_l2'
     phone = Column(String(20), nullable=True)
-
+    
+    # Track who created this user (for admin hierarchy)
+    created_by = Column(Integer, ForeignKey('user.id'), nullable=True)
+    
     # Many-to-Many relationships
     grades = db.relationship('Grade', secondary=user_grades, backref='users')
     subjects = db.relationship('Subject', secondary=user_subjects, backref='users')
@@ -50,5 +53,9 @@ class SubstituteRequest(db.Model):
     status = Column(String(20), default='Open')
     substitute_id = Column(Integer, ForeignKey('user.id'), nullable=True)
     substitute_user = relationship("User", foreign_keys=[substitute_id])
+    grade_id = Column(Integer, ForeignKey('grade.id'), nullable=True)
+    subject_id = Column(Integer, ForeignKey('subject.id'), nullable=True)
+    grade = relationship("Grade", foreign_keys=[grade_id])
+    subject = relationship("Subject", foreign_keys=[subject_id])
     token = Column(String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))  # Unique Token
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)  # When the request was made
