@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Edit Profile</title>
+    <title>Edit Profile - {{ user.name }}</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -226,7 +226,7 @@
 </head>
 <body>
     <header>
-        <h1><i class="fas fa-user-edit"></i> Edit Profile</h1>
+        <h1><i class="fas fa-user-edit"></i> Edit Profile: {{ user.name }}</h1>
     </header>
 
     <div class="container">
@@ -243,10 +243,10 @@
 
         <div class="card">
             <div class="card-header">
-                <h2>Update Your Information</h2>
+                <h2>Update Profile Information</h2>
             </div>
             
-            <form action="{{ url_for('edit_profile') }}" method="POST">
+            <form action="{{ url_for('edit_profile', user_id=user.id) }}" method="POST">
                 <div class="form-group">
                     <label for="name">Name:</label>
                     <input type="text" id="name" name="name" value="{{ user.name }}" required>
@@ -289,8 +289,8 @@
                 </div>
                 
                 <div class="actions">
-                    <a href="{{ url_for('substitute_dashboard') }}" class="btn btn-secondary">
-                        <i class="fas fa-arrow-left"></i> Back to Dashboard
+                    <a href="{{ url_for('user_profile', user_id=user.id) }}" class="btn btn-secondary">
+                        <i class="fas fa-arrow-left"></i> Back to Profile
                     </a>
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-save"></i> Save Changes

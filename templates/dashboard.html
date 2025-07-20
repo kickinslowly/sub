@@ -680,6 +680,18 @@
                                     <span class="booking-detail-value">{{ booking.substitute_user.name }}</span>
                                 </div>
                                 {% endif %}
+                                {% if booking.grade %}
+                                <div class="booking-detail">
+                                    <span class="booking-detail-label">Grade</span>
+                                    <span class="booking-detail-value">{{ booking.grade.name }}</span>
+                                </div>
+                                {% endif %}
+                                {% if booking.subject %}
+                                <div class="booking-detail">
+                                    <span class="booking-detail-label">Subject</span>
+                                    <span class="booking-detail-value">{{ booking.subject.name }}</span>
+                                </div>
+                                {% endif %}
                             </div>
 
                             {% if booking.reason %}
@@ -739,6 +751,18 @@
                                         <span class="status-indicator status-open">Open</span>
                                     </span>
                                 </div>
+                                {% if booking.grade %}
+                                <div class="booking-detail">
+                                    <span class="booking-detail-label">Grade</span>
+                                    <span class="booking-detail-value">{{ booking.grade.name }}</span>
+                                </div>
+                                {% endif %}
+                                {% if booking.subject %}
+                                <div class="booking-detail">
+                                    <span class="booking-detail-label">Subject</span>
+                                    <span class="booking-detail-value">{{ booking.subject.name }}</span>
+                                </div>
+                                {% endif %}
                             </div>
 
                             {% if booking.reason %}
@@ -801,6 +825,18 @@
                                     <span class="booking-detail-label">Filled by</span>
                                     <span class="booking-detail-value">{{ booking.substitute_user.name }}</span>
                                 </div>
+                                {% if booking.grade %}
+                                <div class="booking-detail">
+                                    <span class="booking-detail-label">Grade</span>
+                                    <span class="booking-detail-value">{{ booking.grade.name }}</span>
+                                </div>
+                                {% endif %}
+                                {% if booking.subject %}
+                                <div class="booking-detail">
+                                    <span class="booking-detail-label">Subject</span>
+                                    <span class="booking-detail-value">{{ booking.subject.name }}</span>
+                                </div>
+                                {% endif %}
                             </div>
 
                             {% if booking.reason %}
@@ -1025,6 +1061,28 @@
                         <span class="booking-detail-value">${booking.substitute.name}</span>
                     `;
                     details.appendChild(substitute);
+                }
+                
+                // Grade info if available
+                if (booking.grade) {
+                    const grade = document.createElement('div');
+                    grade.className = 'booking-detail';
+                    grade.innerHTML = `
+                        <span class="booking-detail-label">Grade</span>
+                        <span class="booking-detail-value">${booking.grade.name}</span>
+                    `;
+                    details.appendChild(grade);
+                }
+                
+                // Subject info if available
+                if (booking.subject) {
+                    const subject = document.createElement('div');
+                    subject.className = 'booking-detail';
+                    subject.innerHTML = `
+                        <span class="booking-detail-label">Subject</span>
+                        <span class="booking-detail-value">${booking.subject.name}</span>
+                    `;
+                    details.appendChild(subject);
                 }
 
                 item.appendChild(details);

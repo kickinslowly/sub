@@ -468,17 +468,25 @@ def substitute_dashboard():
                           matching_requests=matching_requests)
 
 
-@app.route('/edit_profile', methods=['GET', 'POST'])
-def edit_profile():
+@app.route('/edit_profile/<int:user_id>', methods=['GET', 'POST'])
+def edit_profile(user_id):
     # Ensure user is authenticated
     logged_in_user = get_logged_in_user()
     if not logged_in_user:
         flash('Please log in to continue.')
         return redirect(url_for('index'))
 
-    # Ensure user is a substitute
-    if logged_in_user.role != 'substitute':
-        flash('This feature is only available for substitute users.')
+    # Get the user to edit
+    user_to_edit = User.query.get_or_404(user_id)
+    
+    # Check permissions: user can edit their own profile or admin_l2 can edit any profile
+    if logged_in_user.id != user_to_edit.id and logged_in_user.role != 'admin_l2':
+        flash('You do not have permission to edit this profile.')
+        return redirect(url_for('user_profile', user_id=user_id))
+
+    # Ensure user is a teacher, substitute, or admin_l2
+    if logged_in_user.role not in ['teacher', 'substitute', 'admin_l2']:
+        flash('This feature is only available for teachers, substitutes, and level 2 admins.')
         return redirect(url_for('dashboard'))
 
     # Fetch all grades and subjects for the form
@@ -487,9 +495,9 @@ def edit_profile():
 
     if request.method == 'POST':
         # Update user details
-        logged_in_user.name = request.form['name']
-        logged_in_user.email = request.form['email']
-        logged_in_user.phone = request.form.get('phone', None)
+        user_to_edit.name = request.form['name']
+        user_to_edit.email = request.form['email']
+        user_to_edit.phone = request.form.get('phone', None)
 
         # Update grades and subjects
         grade_ids = request.form.getlist('grades')  # List of selected grade IDs
@@ -497,16 +505,23 @@ def edit_profile():
         grade_objs = Grade.query.filter(Grade.id.in_(grade_ids)).all()
         subject_objs = Subject.query.filter(Subject.id.in_(subject_ids)).all()
 
-        logged_in_user.grades = grade_objs
-        logged_in_user.subjects = subject_objs
+        user_to_edit.grades = grade_objs
+        user_to_edit.subjects = subject_objs
 
         # Save changes to the database
         db.session.commit()
 
-        flash('Your profile has been updated successfully!')
-        return redirect(url_for('substitute_dashboard'))
+        flash('Profile has been updated successfully!')
+        
+        # Redirect based on user role and who is being edited
+        if logged_in_user.role == 'admin_l2' and logged_in_user.id != user_to_edit.id:
+            return redirect(url_for('user_profile', user_id=user_id))
+        elif user_to_edit.role == 'substitute':
+            return redirect(url_for('substitute_dashboard'))
+        else:
+            return redirect(url_for('dashboard'))
 
-    return render_template('edit_profile.html', user=logged_in_user, grades=grades, subjects=subjects)
+    return render_template('edit_profile.html', user=user_to_edit, grades=grades, subjects=subjects)
 
 
 @app.route('/dashboard')
@@ -650,6 +665,20 @@ def admin_dashboard():
     )
 
 
+@app.route('/admin_request', methods=['GET'])
+def admin_request_form():
+    """Display the form for admins to create substitute requests."""
+    # Ensure user is authenticated and has admin role
+    if not is_authenticated(required_role='admin'):
+        flash('Access denied. Admins only.')
+        return redirect(url_for('index'))
+        
+    # Get all teachers for the dropdown
+    teachers = User.query.filter_by(role='teacher').order_by(User.name).all()
+    
+    return render_template('admin_request.html', teachers=teachers)
+
+
 @app.route('/admin_create_request', methods=['POST'])
 def admin_create_request():
     """Handle admin creation of substitute requests."""
@@ -766,8 +795,14 @@ def admin_create_request():
         📖 Subject: {subject_name}
         📌 Details: {details or 'No additional details provided'}
         """
+        # Send to admins in Config.ADMIN_EMAILS (for backward compatibility)
         for admin_email in Config.ADMIN_EMAILS:
             send_email(admin_subject, admin_email, admin_email_body)
+            
+        # Send to all level 2 admins
+        level2_admins = User.query.filter_by(role='admin_l2').all()
+        for admin in level2_admins:
+            send_email(admin_subject, admin.email, admin_email_body)
 
         # Send SMS notification to admin
         admin_sms_body = f"New sub request: Teacher {teacher.name}, Date {date}, Time {time}, Grade {grade_name}, Subject {subject_name}, Reason {reason or 'Not specified'}"
@@ -775,9 +810,26 @@ def admin_create_request():
             for admin_phone in Config.ADMIN_PHONE_NUMBERS:
                 send_sms(admin_phone, admin_sms_body)
 
+        # Send email notification to teacher
+        teacher_subject = "Your Substitute Request Has Been Created"
+        teacher_email_body = f"""
+        A substitute request has been created for you:
+
+        📅 Date: {date}
+        ⏰ Time: {time}
+        📚 Grade: {grade_name}
+        📖 Subject: {subject_name}
+        🔍 Reason: {reason or 'Not specified'}
+        📌 Details: {details or 'No additional details provided'}
+
+        You will be notified when a substitute accepts this request.
+        """
+        if teacher.email:
+            send_email(teacher_subject, teacher.email, teacher_email_body)
+
         # Send SMS confirmation to teacher
         if teacher.phone:
-            teacher_sms_body = "Sub Request submitted successfully."
+            teacher_sms_body = f"Sub Request created for {date}, {time}. You will be notified when a substitute accepts."
             send_sms(teacher.phone, teacher_sms_body)
 
         flash('Substitute request created successfully! Notification sent to matching substitutes.')
@@ -902,9 +954,16 @@ def request_form_and_submit():
                 🔍 Reason: {reason or 'Not specified'}
                 📌 Details: {details or 'No additional details provided'}
                 """
+                # Send to admins in Config.ADMIN_EMAILS (for backward compatibility)
                 for admin_email in Config.ADMIN_EMAILS:
                     if not send_email(admin_subject, admin_email, admin_email_body):
                         notification_errors.append(f"Failed to send email to admin {admin_email}")
+                
+                # Send to all level 2 admins
+                level2_admins = User.query.filter_by(role='admin_l2').all()
+                for admin in level2_admins:
+                    if not send_email(admin_subject, admin.email, admin_email_body):
+                        notification_errors.append(f"Failed to send email to admin {admin.email}")
 
                 # Send SMS notification to admin
                 admin_sms_body = f"New sub request: Teacher {teacher.name}, Date {date}, Time {time}, Grade {grade_name}, Subject {subject_name}, Reason {reason or 'Not specified'}"
@@ -913,9 +972,27 @@ def request_form_and_submit():
                         if not send_sms(admin_phone, admin_sms_body):
                             notification_errors.append(f"Failed to send SMS to admin {admin_phone}")
 
+                # Send email notification to teacher
+                teacher_subject = "Your Substitute Request Has Been Created"
+                teacher_email_body = f"""
+                A substitute request has been created:
+
+                📅 Date: {date}
+                ⏰ Time: {time}
+                📚 Grade: {grade_name}
+                📖 Subject: {subject_name}
+                🔍 Reason: {reason or 'Not specified'}
+                📌 Details: {details or 'No additional details provided'}
+
+                You will be notified when a substitute accepts this request.
+                """
+                if teacher.email:
+                    if not send_email(teacher_subject, teacher.email, teacher_email_body):
+                        notification_errors.append(f"Failed to send email to teacher {teacher.email}")
+
                 # Send SMS confirmation to teacher
                 if teacher.phone:
-                    teacher_sms_body = "Sub Request submitted successfully."
+                    teacher_sms_body = f"Sub Request created for {date}, {time}. You will be notified when a substitute accepts."
                     if not send_sms(teacher.phone, teacher_sms_body):
                         notification_errors.append(f"Failed to send SMS to teacher {teacher.phone}")
 
@@ -1394,11 +1471,21 @@ def edit_user(user_id):
     db.session.commit()
 
     flash(f"User '{user.name}' updated successfully!")
-    return redirect(url_for('manage_users'))
+    # Redirect to manage_admins if the user is an admin, otherwise to manage_users
+    if user.role == 'admin_l2':
+        return redirect(url_for('manage_admins'))
+    else:
+        return redirect(url_for('manage_users'))
 
 
 @app.route('/user_profile/<int:user_id>')
 def user_profile(user_id):
+    # Get the current logged-in user
+    current_user = get_logged_in_user()
+    if not current_user:
+        flash('Please log in to continue.')
+        return redirect(url_for('index'))
+        
     # Query the database for the user by ID
     user = User.query.get(user_id)
     # Validate if the user exists
@@ -1421,7 +1508,7 @@ def user_profile(user_id):
         ).order_by(SubstituteRequest.date.desc()).all()
 
     # Render the user profile page with appropriate data
-    return render_template('user_profile.html', user=user, requests=requests)
+    return render_template('user_profile.html', user=user, requests=requests, current_user=current_user)
 
 
 @app.route('/edit_request/<int:request_id>', methods=['GET', 'POST'])
@@ -1533,12 +1620,96 @@ def delete_user(user_id):
             req.substitute_id = None
             req.status = 'Open'
 
+    # Store the user's role before deletion
+    user_role = user.role
+    user_name = user.name
+    
     # Delete the user
     db.session.delete(user)
     db.session.commit()
 
-    flash(f"User '{user.name}' has been removed successfully.")
-    return redirect(url_for('manage_users'))
+    flash(f"User '{user_name}' has been removed successfully.")
+    # Redirect to manage_admins if the user was an admin, otherwise to manage_users
+    if user_role == 'admin_l2':
+        return redirect(url_for('manage_admins'))
+    else:
+        return redirect(url_for('manage_users'))
+
+
+@app.route('/transfer_admin_ownership', methods=['POST'])
+def transfer_admin_ownership():
+    """Transfer level 1 admin ownership to another user."""
+    # Ensure user is authenticated and has level 1 admin role
+    if not is_authenticated(required_role='admin_l1'):
+        flash('Access denied. Only level 1 admins can transfer ownership.')
+        return redirect(url_for('admin_dashboard'))
+    
+    # Get the current admin
+    current_admin = get_logged_in_user()
+    
+    # Get form data
+    new_admin_email = request.form.get('new_admin_email')
+    confirmation = request.form.get('confirmation')
+    
+    # Validate inputs
+    if not new_admin_email:
+        flash('Email address is required!')
+        return redirect(url_for('admin_dashboard'))
+    
+    if confirmation != 'confirm':
+        flash('You must confirm the transfer by typing "confirm"!')
+        return redirect(url_for('admin_dashboard'))
+    
+    # Check if the new admin email is the same as the current admin
+    if new_admin_email == current_admin.email:
+        flash('You cannot transfer ownership to yourself!')
+        return redirect(url_for('admin_dashboard'))
+    
+    # Check if the new admin already exists
+    new_admin = User.query.filter_by(email=new_admin_email).first()
+    
+    if new_admin:
+        # If the user already exists, update their role to admin_l1
+        # Save their previous role in case we need to revert
+        previous_role = new_admin.role
+        
+        # If the user is already an admin_l1, don't allow the transfer
+        if previous_role == 'admin_l1':
+            flash('This user is already a level 1 admin!')
+            return redirect(url_for('admin_dashboard'))
+        
+        # Update the user's role to admin_l1
+        new_admin.role = 'admin_l1'
+        
+        # If the user was a teacher or substitute, remove their grade and subject associations
+        if previous_role in ['teacher', 'substitute']:
+            # Clear grade and subject associations
+            new_admin.grades = []
+            new_admin.subjects = []
+    else:
+        # Create a new user with admin_l1 role
+        new_admin = User(
+            email=new_admin_email,
+            name=new_admin_email.split('@')[0],  # Use part of email as name
+            role='admin_l1',
+            created_by=current_admin.id
+        )
+        db.session.add(new_admin)
+    
+    # Change the current admin's role to admin_l2
+    current_admin.role = 'admin_l2'
+    
+    # Commit changes to the database
+    db.session.commit()
+    
+    # Update session to reflect the role change
+    session['user_info'] = {'email': current_admin.email, 'role': 'admin_l2'}
+    
+    # Flash a success message
+    flash(f'Admin ownership transferred to {new_admin_email} successfully! You are now a level 2 admin.')
+    
+    # Redirect to logout since the user's role has changed
+    return redirect(url_for('logout'))
 
 
 # Run the application if this file is executed directly
