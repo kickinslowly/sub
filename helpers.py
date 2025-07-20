@@ -3,6 +3,59 @@ from extensions import mail  # Import 'mail' from extensions.py
 from config import Config  # Import Config at the module level
 
 
+def generate_admin_sub_filled_email(teacher, sub_request, substitute):
+    """
+    Generates standardized email content for admins when a substitute request is filled.
+    """
+    subject = "Substitute Position Filled"
+    body = f"""A substitute position has been filled:
+    👨‍🏫 Teacher: {teacher.name}
+    📅 Date: {sub_request.date.strftime('%Y-%m-%d')}
+    ⏰ Time: {sub_request.time}
+    ✅ Filled by: {substitute.name} ({substitute.email})
+    🔍 Reason: {sub_request.reason or 'Not specified'}
+    📌 Details: {sub_request.details or 'No additional details provided'}
+    📚 Grade: {getattr(sub_request.grade, 'name', 'Not specified')}
+    📖 Subject: {getattr(sub_request.subject, 'name', 'Not specified')}"""
+
+    return subject, body
+
+
+def generate_teacher_sub_filled_email(sub_request, substitute):
+    """
+    Generates standardized email content for teachers when their substitute request is filled.
+    """
+    subject = "Your Substitute Request Has Been Filled"
+    body = f"""Good news! Your substitute request has been filled:
+    📅 Date: {sub_request.date.strftime('%Y-%m-%d')}
+    ⏰ Time: {sub_request.time}
+    🔍 Reason: {sub_request.reason or 'Not specified'}
+    ✅ Filled by: {substitute.name}
+    📧 Contact: {substitute.email}
+    📚 Grade: {getattr(sub_request.grade, 'name', 'Not specified')}
+    📖 Subject: {getattr(sub_request.subject, 'name', 'Not specified')}"""
+
+    return subject, body
+
+
+def generate_substitute_confirmation_email(teacher, sub_request):
+    """
+    Generates standardized email content for substitutes confirming their acceptance.
+    """
+    subject = "Substitute Position Confirmation"
+    body = f"""Thank you for accepting the substitute position:
+    👨‍🏫 Teacher: {teacher.name}
+    📅 Date: {sub_request.date.strftime('%Y-%m-%d')}
+    ⏰ Time: {sub_request.time}
+    🔍 Reason: {sub_request.reason or 'Not specified'}
+    📌 Details: {sub_request.details or 'No additional details provided'}
+    📚 Grade: {getattr(sub_request.grade, 'name', 'Not specified')}
+    📖 Subject: {getattr(sub_request.subject, 'name', 'Not specified')}
+    ⚠️ Important: Please report to the front office at least 10 minutes before the scheduled time."""
+
+    return subject, body
+
+
 def filter_eligible_substitutes(teacher, substitutes):
     """
     Filters substitutes based on matching grades and subjects with the teacher.

@@ -358,6 +358,68 @@
                 width: 100%;
             }
         }
+        
+        .quick-actions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 20px;
+        }
+
+        .quick-actions-grid .card {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        /* Quick Actions Section Styling */
+        .card.mb-4:has(.quick-actions-grid) {
+            box-shadow: 0 8px 20px rgba(37, 117, 252, 0.15);
+            border-left: 4px solid var(--primary-color);
+        }
+
+        .quick-actions-grid .card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .quick-actions-grid .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(37, 117, 252, 0.2);
+        }
+
+        /* Search Section Styling */
+        .card:has(#searchForm) {
+            box-shadow: 0 8px 20px rgba(106, 17, 203, 0.15);
+            border-left: 4px solid var(--secondary-color);
+        }
+
+        /* Requests List Section Styling */
+        .card:has(.request-item) {
+            box-shadow: 0 8px 20px rgba(40, 167, 69, 0.15);
+            border-left: 4px solid var(--success-color);
+        }
+
+        /* Card header styling for different sections */
+        .card:has(.quick-actions-grid) .card-header {
+            background-color: rgba(37, 117, 252, 0.05);
+        }
+
+        .card:has(#searchForm) .card-header {
+            background-color: rgba(106, 17, 203, 0.05);
+        }
+
+        .card:has(.request-item) .card-header {
+            background-color: rgba(40, 167, 69, 0.05);
+        }
+
+        /* Add subtle border radius to inner elements */
+        .form-control, .form-select, .btn {
+            border-radius: 8px;
+        }
+
+        /* Add a subtle hover effect to form elements */
+        .form-control:hover, .form-select:hover {
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+        }
     </style>
 </head>
 <body>
@@ -373,59 +435,58 @@
     
     <div class="container-fluid">
 
-        <!-- Management Section - Side by Side -->
-        <div class="row mb-4">
-            <!-- Users Management Card -->
-            <div class="col-lg-6">
-                <div class="card h-100">
-                    <div class="card-header">
-                        <h2><i class="fas fa-users"></i> User Management</h2>
-                    </div>
-                    <div class="card-body">
-                        <p class="card-text">Manage accounts for teachers and substitutes.</p>
-                        <a href="/manage_users" class="btn btn-primary w-100">
-                            <i class="fas fa-user-cog"></i> Manage Users
-                        </a>
-                    </div>
-                </div>
+        <!-- Quick Actions Section -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2><i class="fas fa-bolt"></i> Quick Actions</h2>
             </div>
-            
-            <!-- Admin Management Card (Only visible to Tech Coordinators) -->
-            {% if is_tech_coordinator %}
-            <div class="col-lg-6">
-                <div class="card h-100">
-                    <div class="card-header">
-                        <h2><i class="fas fa-shield-alt"></i> Admin Management</h2>
+            <div class="card-body">
+                <div class="quick-actions-grid">
+                    <!-- Users Management Card -->
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-header">
+                            <h2><i class="fas fa-users"></i> User Management</h2>
+                        </div>
+                        <div class="card-body">
+                            <p class="card-text">Manage accounts for teachers and substitutes.</p>
+                            <a href="/manage_users" class="btn btn-primary w-100">
+                                <i class="fas fa-user-cog"></i> Manage Users
+                            </a>
+                        </div>
                     </div>
-                    <div class="card-body">
-                        <p class="card-text">Manage level 2 administrators (front office staff and principal).</p>
-                        <a href="/manage_admins" class="btn btn-primary w-100">
-                            <i class="fas fa-user-shield"></i> Manage Admins
-                        </a>
+                    
+                    <!-- Admin Management Card (Only visible to Tech Coordinators) -->
+                    {% if is_tech_coordinator %}
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-header">
+                            <h2><i class="fas fa-shield-alt"></i> Admin Management</h2>
+                        </div>
+                        <div class="card-body">
+                            <p class="card-text">Manage level 2 administrators (front office staff and principal).</p>
+                            <a href="/manage_admins" class="btn btn-primary w-100">
+                                <i class="fas fa-user-shield"></i> Manage Admins
+                            </a>
+                        </div>
                     </div>
-                </div>
+                    {% endif %}
+                    
+                    <!-- Create Request Card -->
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-header">
+                            <h2><i class="fas fa-calendar-plus"></i> Create Substitute Request</h2>
+                        </div>
+                        <div class="card-body">
+                            <p class="card-text">Create a new substitute request for a teacher.</p>
+                            <a href="/admin_request" class="btn btn-primary w-100">
+                                <i class="fas fa-calendar-plus"></i> Create Request
+                            </a>
+                        </div>
+                    </div>
+                </div> <!-- End quick-actions-grid -->
             </div>
-            {% endif %}
         </div>
         
         <div class="row">
-            <!-- Left Column -->
-            <div class="col-lg-4">
-
-                <!-- Create Request Card -->
-                <div class="card">
-                    <div class="card-header">
-                        <h2><i class="fas fa-calendar-plus"></i> Create Substitute Request</h2>
-                    </div>
-                    <div class="card-body">
-                        <p class="card-text">Create a new substitute request for a teacher.</p>
-                        <a href="/admin_request" class="btn btn-primary w-100">
-                            <i class="fas fa-calendar-plus"></i> Create Request
-                        </a>
-                    </div>
-                </div>
-            </div>
-
             <!-- Right Column -->
             <div class="col-lg-8">
                 <!-- Search Card -->
@@ -436,31 +497,43 @@
                     <div class="card-body">
                         <form id="searchForm" method="GET" action="/admin_dashboard">
                             <div class="row g-3">
-                                <div class="col-md-6">
-                                    <label for="search_keyword" class="form-label">Keyword:</label>
-                                    <input type="text" id="search_keyword" name="search_keyword" class="form-control" 
-                                           placeholder="Teacher or substitute name" value="{{ request.args.get('search_keyword', '') }}">
+                                <div class="col-md-6 mb-3">
+                                    <label for="search_keyword" class="form-label fw-medium">Keyword:</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text"><i class="fas fa-search"></i></span>
+                                        <input type="text" id="search_keyword" name="search_keyword" class="form-control" 
+                                               placeholder="Teacher or substitute name" value="{{ request.args.get('search_keyword', '') }}">
+                                    </div>
                                 </div>
-                                <div class="col-md-6">
-                                    <label for="search_date" class="form-label">Date:</label>
-                                    <input type="date" id="search_date" name="search_date" class="form-control"
-                                           value="{{ request.args.get('search_date', '') }}">
+                                <div class="col-md-6 mb-3">
+                                    <label for="search_date" class="form-label fw-medium">Date:</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text"><i class="fas fa-calendar"></i></span>
+                                        <input type="date" id="search_date" name="search_date" class="form-control"
+                                               value="{{ request.args.get('search_date', '') }}">
+                                    </div>
                                 </div>
-                                <div class="col-md-6">
-                                    <label for="search_status" class="form-label">Status:</label>
-                                    <select id="search_status" name="search_status" class="form-select">
-                                        <option value="">All</option>
-                                        <option value="Open" {% if request.args.get('search_status') == 'Open' %}selected{% endif %}>Open</option>
-                                        <option value="Filled" {% if request.args.get('search_status') == 'Filled' %}selected{% endif %}>Filled</option>
-                                    </select>
+                                <div class="col-md-6 mb-3">
+                                    <label for="search_status" class="form-label fw-medium">Status:</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text"><i class="fas fa-filter"></i></span>
+                                        <select id="search_status" name="search_status" class="form-select">
+                                            <option value="">All</option>
+                                            <option value="Open" {% if request.args.get('search_status') == 'Open' %}selected{% endif %}>Open</option>
+                                            <option value="Filled" {% if request.args.get('search_status') == 'Filled' %}selected{% endif %}>Filled</option>
+                                        </select>
+                                    </div>
                                 </div>
-                                <div class="col-md-6 d-flex align-items-end">
-                                    <button type="submit" class="btn btn-primary me-2">
-                                        <i class="fas fa-search"></i> Search
-                                    </button>
-                                    <a href="/admin_dashboard" class="btn btn-secondary">
-                                        <i class="fas fa-times-circle"></i> Clear
-                                    </a>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label invisible">Actions</label>
+                                    <div class="d-flex justify-content-start align-items-center w-100">
+                                        <button type="submit" class="btn btn-primary me-2 px-4">
+                                            <i class="fas fa-search me-1"></i> Search
+                                        </button>
+                                        <a href="/admin_dashboard" class="btn btn-secondary px-4">
+                                            <i class="fas fa-times-circle me-1"></i> Clear
+                                        </a>
+                                    </div>
                                 </div>
                             </div>
                         </form>

@@ -764,18 +764,14 @@ def admin_create_request():
         subject = "New Substitute Request Available"
 
         for substitute in eligible_substitutes:
-            email_body = f"""
-            A new substitute request has been posted:
-
+            email_body = f"""A new substitute request has been posted:
             📅 Date: {date}
             ⏰ Time: {time}
             👨‍🏫 Teacher: {teacher.name}
             📚 Grade: {grade_name}
             📖 Subject: {subject_name}
             📌 Details: {details or 'No additional details provided'}
-
-            👉 Accept the request here: {request_link}
-            """
+            👉 Accept the request here: {request_link}"""
             send_email(subject, substitute.email, email_body)
 
             # Send SMS to eligible substitutes with phones
@@ -785,16 +781,13 @@ def admin_create_request():
 
         # Send notification to admin via email
         admin_subject = "New Substitute Request Created"
-        admin_email_body = f"""
-        A new substitute request has been created:
-
+        admin_email_body = f"""A new substitute request has been created:
         👨‍🏫 Teacher: {teacher.name}
         📅 Date: {date}
         ⏰ Time: {time}
         📚 Grade: {grade_name}
         📖 Subject: {subject_name}
-        📌 Details: {details or 'No additional details provided'}
-        """
+        📌 Details: {details or 'No additional details provided'}"""
         # Send to admins in Config.ADMIN_EMAILS (for backward compatibility)
         for admin_email in Config.ADMIN_EMAILS:
             send_email(admin_subject, admin_email, admin_email_body)
@@ -812,18 +805,14 @@ def admin_create_request():
 
         # Send email notification to teacher
         teacher_subject = "Your Substitute Request Has Been Created"
-        teacher_email_body = f"""
-        A substitute request has been created for you:
-
+        teacher_email_body = f"""A substitute request has been created for you:
         📅 Date: {date}
         ⏰ Time: {time}
         📚 Grade: {grade_name}
         📖 Subject: {subject_name}
         🔍 Reason: {reason or 'Not specified'}
         📌 Details: {details or 'No additional details provided'}
-
-        You will be notified when a substitute accepts this request.
-        """
+        You will be notified when a substitute accepts this request."""
         if teacher.email:
             send_email(teacher_subject, teacher.email, teacher_email_body)
 
@@ -927,33 +916,26 @@ def request_form_and_submit():
                         subject_name = subject.name
                         
                 for substitute in eligible_substitutes:
-                    email_body = f"""
-                    A new substitute request has been posted:
-
+                    email_body = f"""A new substitute request has been posted:
                     📅 Date: {date}
                     ⏰ Time: {time}
                     📚 Grade: {grade_name}
                     📖 Subject: {subject_name}
                     📌 Details: {details or 'No additional details provided'}
-
-                    👉 Accept the request here: {request_link}
-                    """
+                    👉 Accept the request here: {request_link}"""
                     if not send_email(subject, substitute.email, email_body):
                         notification_errors.append(f"Failed to send email to {substitute.email}")
 
                 # Send notification to admin via email
                 admin_subject = "New Substitute Request Created"
-                admin_email_body = f"""
-                A new substitute request has been created:
-
+                admin_email_body = f"""A new substitute request has been created:
                 👨‍🏫 Teacher: {teacher.name}
                 📅 Date: {date}
                 ⏰ Time: {time}
                 📚 Grade: {grade_name}
                 📖 Subject: {subject_name}
                 🔍 Reason: {reason or 'Not specified'}
-                📌 Details: {details or 'No additional details provided'}
-                """
+                📌 Details: {details or 'No additional details provided'}"""
                 # Send to admins in Config.ADMIN_EMAILS (for backward compatibility)
                 for admin_email in Config.ADMIN_EMAILS:
                     if not send_email(admin_subject, admin_email, admin_email_body):
@@ -974,18 +956,14 @@ def request_form_and_submit():
 
                 # Send email notification to teacher
                 teacher_subject = "Your Substitute Request Has Been Created"
-                teacher_email_body = f"""
-                A substitute request has been created:
-
+                teacher_email_body = f"""A substitute request has been created:
                 📅 Date: {date}
                 ⏰ Time: {time}
                 📚 Grade: {grade_name}
                 📖 Subject: {subject_name}
                 🔍 Reason: {reason or 'Not specified'}
                 📌 Details: {details or 'No additional details provided'}
-
-                You will be notified when a substitute accepts this request.
-                """
+                You will be notified when a substitute accepts this request."""
                 if teacher.email:
                     if not send_email(teacher_subject, teacher.email, teacher_email_body):
                         notification_errors.append(f"Failed to send email to teacher {teacher.email}")
@@ -1045,57 +1023,20 @@ def view_sub_request(token):
         db.session.commit()
 
         # Send email notifications
+        # Import helper functions for email templates
+        from helpers import generate_admin_sub_filled_email, generate_teacher_sub_filled_email, generate_substitute_confirmation_email
+
         # 1. Email to admin
-        admin_subject = "Substitute Request Filled"
-        admin_email_body = f"""
-        A substitute request has been filled:
-
-        👨‍🏫 Teacher: {teacher.name}
-        📅 Date: {sub_request.date.strftime('%Y-%m-%d')}
-        ⏰ Time: {sub_request.time}
-        🔍 Reason: {sub_request.reason or 'Not specified'}
-        📌 Details: {sub_request.details or 'No additional details provided'}
-
-        ✅ Filled by: {logged_in_user.name} ({logged_in_user.email})
-        """
+        admin_subject, admin_email_body = generate_admin_sub_filled_email(teacher, sub_request, logged_in_user)
         for admin_email in Config.ADMIN_EMAILS:
             send_email(admin_subject, admin_email, admin_email_body)
 
         # 2. Email to teacher
-        teacher_subject = "Your Substitute Request Has Been Filled"
-        teacher_email_body = f"""
-        Good news! Your substitute request has been filled:
-
-        📅 Date: {sub_request.date.strftime('%Y-%m-%d')}
-        ⏰ Time: {sub_request.time}
-        🔍 Reason: {sub_request.reason or 'Not specified'}
-
-        ✅ Filled by: {logged_in_user.name}
-        📧 Contact: {logged_in_user.email}
-        """
+        teacher_subject, teacher_email_body = generate_teacher_sub_filled_email(sub_request, logged_in_user)
         send_email(teacher_subject, teacher.email, teacher_email_body)
 
         # 3. Email to substitute
-        sub_subject = "Substitute Position Confirmation"
-        sub_email_body = f"""
-        Thank you for accepting the substitute position:
-
-        👨‍🏫 Teacher: {teacher.name}
-        📅 Date: {sub_request.date.strftime('%Y-%m-%d')}
-        ⏰ Time: {sub_request.time}
-        🔍 Reason: {sub_request.reason or 'Not specified'}
-        📌 Details: {sub_request.details or 'No additional details provided'}
-
-        ⚠️ Important: Please report to the front office at least 10 minutes before the scheduled time.
-        """
-
-        # Add grade and subject information from the request
-        if sub_request.grade:
-            sub_email_body += f"\n📚 Grade: {sub_request.grade.name}"
-
-        if sub_request.subject:
-            sub_email_body += f"\n📖 Subject: {sub_request.subject.name}"
-
+        sub_subject, sub_email_body = generate_substitute_confirmation_email(teacher, sub_request)
         send_email(sub_subject, logged_in_user.email, sub_email_body)
 
         flash("You have successfully accepted the sub request.")
@@ -1340,55 +1281,35 @@ def accept_sub_request(token):
     teacher = User.query.get(sub_request.teacher_id)
 
     # Send email notifications
+    # Import helper functions for email templates
+    from helpers import generate_admin_sub_filled_email, generate_teacher_sub_filled_email, generate_substitute_confirmation_email
+
     # 1. Email to admin
-    admin_subject = "Substitute Request Filled"
-    admin_email_body = f"""
-    A substitute request has been filled:
-
-    👨‍🏫 Teacher: {teacher.name}
-    📅 Date: {sub_request.date.strftime('%Y-%m-%d')}
-    ⏰ Time: {sub_request.time}
-    📌 Details: {sub_request.details or 'No additional details provided'}
-
-    ✅ Filled by: {logged_in_user.name} ({logged_in_user.email})
-    """
+    admin_subject, admin_email_body = generate_admin_sub_filled_email(teacher, sub_request, logged_in_user)
     for admin_email in Config.ADMIN_EMAILS:
         send_email(admin_subject, admin_email, admin_email_body)
 
     # 2. Email to teacher
-    teacher_subject = "Your Substitute Request Has Been Filled"
-    teacher_email_body = f"""
-    Good news! Your substitute request has been filled:
-
-    📅 Date: {sub_request.date.strftime('%Y-%m-%d')}
-    ⏰ Time: {sub_request.time}
-
-    ✅ Filled by: {logged_in_user.name}
-    📧 Contact: {logged_in_user.email}
-    """
+    teacher_subject, teacher_email_body = generate_teacher_sub_filled_email(sub_request, logged_in_user)
     send_email(teacher_subject, teacher.email, teacher_email_body)
 
     # 3. Email to substitute
-    sub_subject = "Substitute Position Confirmation"
-    sub_email_body = f"""
-    Thank you for accepting the substitute position:
-
-    👨‍🏫 Teacher: {teacher.name}
-    📅 Date: {sub_request.date.strftime('%Y-%m-%d')}
-    ⏰ Time: {sub_request.time}
-    📌 Details: {sub_request.details or 'No additional details provided'}
-
-    ⚠️ Important: Please report to the front office at least 10 minutes before the scheduled time.
-    """
-
-    # Add grade and subject information from the request
-    if sub_request.grade:
-        sub_email_body += f"\n📚 Grade: {sub_request.grade.name}"
-
-    if sub_request.subject:
-        sub_email_body += f"\n📖 Subject: {sub_request.subject.name}"
-
+    sub_subject, sub_email_body = generate_substitute_confirmation_email(teacher, sub_request)
     send_email(sub_subject, logged_in_user.email, sub_email_body)
+
+    # 4. Notify level 2 admins via email and SMS
+    level2_admins = User.query.filter_by(role="admin_l2").all()
+    
+    # SMS notification is shorter due to character limitations
+    admin_sms_body = f"Sub position filled: {teacher.name}, {sub_request.date.strftime('%Y-%m-%d')}, {sub_request.time}, filled by {logged_in_user.name}"
+    
+    for admin in level2_admins:
+        # Send email notification
+        send_email(admin_subject, admin.email, admin_email_body)
+        
+        # Send SMS notification if phone number is available
+        if admin.phone:
+            send_sms(admin.phone, admin_sms_body)
 
     return jsonify({"status": "success", "message": "Position accepted!"})
 
