@@ -2,7 +2,10 @@ from flask_mail import Message
 from extensions import mail  # Import 'mail' from extensions.py
 from config import Config  # Import Config at the module level
 from datetime import datetime
+from functools import wraps
+from flask import redirect, url_for, flash, session
 import re
+import pytz  # For timezone handling
 
 def calculate_hours_from_time_range(time_range):
     """
@@ -110,9 +113,10 @@ def generate_substitute_confirmation_email(teacher, sub_request):
     return subject, body
 
 
-def filter_eligible_substitutes(teacher, substitutes):
+def filter_eligible_substitutes(teacher, substitutes=None):
     """
     Filters substitutes based on matching grades and subjects with the teacher.
+    Uses SQLAlchemy queries to filter at the database level for better performance.
 
     Rules:
     1. If a substitute has selected "All" for grades and "All" for subjects, they receive any request.
@@ -120,56 +124,90 @@ def filter_eligible_substitutes(teacher, substitutes):
        the substitute does not get the request.
     3. If the substitute has specified a subject and the teacher's subject is specific and doesn't match, 
        the substitute does not get the request.
+    4. If the substitute and teacher share at least one school, they match.
 
     :param teacher: The teacher object
-    :param substitutes: List of substitute user objects
+    :param substitutes: Optional parameter (kept for backward compatibility)
     :return: Filtered list of eligible substitutes
     """
-    eligible_substitutes = []
+    from models import User, Grade, Subject, School, user_grades, user_subjects, user_schools
+    from extensions import db
+    from sqlalchemy import or_, and_
 
     # Constants for "All" grade and subject IDs
     ALL_GRADE_ID = 9  # ID for "All" grade
     ALL_SUBJECT_ID = 8  # ID for "All" subject
 
-    for substitute in substitutes:
-        # Get the set of grade IDs and subject IDs for the substitute and teacher
-        sub_grade_ids = {grade.id for grade in substitute.grades}
-        sub_subject_ids = {subject.id for subject in substitute.subjects}
-        teacher_grade_ids = {grade.id for grade in teacher.grades}
-        teacher_subject_ids = {subject.id for subject in teacher.subjects}
+    # Get teacher's grade, subject, and school IDs
+    teacher_grade_ids = [grade.id for grade in teacher.grades]
+    teacher_subject_ids = [subject.id for subject in teacher.subjects]
+    teacher_school_ids = [school.id for school in teacher.schools]
 
-        # Rule 1: If substitute selected "All" for both grades and subjects
-        if ALL_GRADE_ID in sub_grade_ids and ALL_SUBJECT_ID in sub_subject_ids:
-            eligible_substitutes.append(substitute)
-            continue
+    # Start with a base query for substitute users
+    query = db.session.query(User).filter(User.role == 'substitute')
 
-        # Check for grade match
-        grade_match = False
-        # If substitute has "All" grade or there's an overlap in grades
-        if ALL_GRADE_ID in sub_grade_ids or (sub_grade_ids and teacher_grade_ids and sub_grade_ids.intersection(teacher_grade_ids)):
-            grade_match = True
+    # Create a subquery for substitutes with "All" grade AND "All" subject
+    all_grade_and_subject_query = (
+        db.session.query(User.id)
+        .join(user_grades)
+        .join(user_subjects)
+        .filter(User.role == 'substitute')
+        .filter(Grade.id == ALL_GRADE_ID)
+        .filter(Subject.id == ALL_SUBJECT_ID)
+    )
 
-        # Check for subject match
-        subject_match = False
-        # If substitute has "All" subject or there's an overlap in subjects
-        if ALL_SUBJECT_ID in sub_subject_ids or (sub_subject_ids and teacher_subject_ids and sub_subject_ids.intersection(teacher_subject_ids)):
-            subject_match = True
+    # Create a query for grade matching (either "All" grade or matching specific grades)
+    grade_match_query = (
+        db.session.query(User.id)
+        .join(user_grades)
+        .filter(User.role == 'substitute')
+        .filter(or_(
+            Grade.id == ALL_GRADE_ID,
+            Grade.id.in_(teacher_grade_ids) if teacher_grade_ids else False
+        ))
+    )
 
-        # Check for school match
-        school_match = False
-        # If substitute doesn't have a school_id assigned, show all schools
-        if substitute.school_id is None:
-            school_match = True
-        # If teacher doesn't have a school_id assigned, show to all substitutes
-        elif teacher.school_id is None:
-            school_match = True
-        # If teacher has a school_id and it matches the substitute's school_id
-        elif teacher.school_id == substitute.school_id:
-            school_match = True
-            
-        # If grade, subject, and school match, add to eligible substitutes
-        if grade_match and subject_match and school_match:
-            eligible_substitutes.append(substitute)
+    # Create a query for subject matching (either "All" subject or matching specific subjects)
+    subject_match_query = (
+        db.session.query(User.id)
+        .join(user_subjects)
+        .filter(User.role == 'substitute')
+        .filter(or_(
+            Subject.id == ALL_SUBJECT_ID,
+            Subject.id.in_(teacher_subject_ids) if teacher_subject_ids else False
+        ))
+    )
+
+    # School matching is more complex due to the empty list rules
+    if not teacher_school_ids:
+        # If teacher has no schools, all substitutes match for schools
+        school_match_query = db.session.query(User.id).filter(User.role == 'substitute')
+    else:
+        # Create a query for school matching
+        # Either substitute has no schools, or there's an overlap in schools
+        school_match_query = (
+            db.session.query(User.id)
+            .outerjoin(user_schools)
+            .filter(User.role == 'substitute')
+            .filter(or_(
+                ~User.schools.any(),  # No schools assigned to substitute
+                School.id.in_(teacher_school_ids)
+            ))
+        )
+
+    # Combine the queries:
+    # 1. Users with "All" grade AND "All" subject
+    # 2. Users with matching grade AND matching subject AND matching school
+    eligible_substitutes = (
+        query.filter(or_(
+            User.id.in_(all_grade_and_subject_query),
+            and_(
+                User.id.in_(grade_match_query),
+                User.id.in_(subject_match_query),
+                User.id.in_(school_match_query)
+            )
+        )).all()
+    )
 
     return eligible_substitutes
 
@@ -282,3 +320,123 @@ def is_future_date_time(date_str, time_range):
         # If there's an error parsing the date or time, log it and return False
         print(f"Error validating date/time: {e}")
         return False
+
+
+# Role-based access control helper functions
+def is_tech_coordinator(user):
+    """
+    Checks if a user is a tech coordinator (admin_l1).
+    
+    :param user: User object to check
+    :return: True if the user is a tech coordinator, False otherwise
+    """
+    return user.email in Config.TECH_COORDINATOR_EMAILS
+
+
+def is_admin_l2(user):
+    """
+    Checks if a user is a level 2 admin.
+    
+    :param user: User object to check
+    :return: True if the user is a level 2 admin, False otherwise
+    """
+    return user.role == 'admin_l2'
+
+
+def is_admin(user):
+    """
+    Checks if a user is any type of admin (admin_l1 or admin_l2).
+    
+    :param user: User object to check
+    :return: True if the user is an admin, False otherwise
+    """
+    return user.role in ['admin_l1', 'admin_l2']
+
+
+def requires_role(role):
+    """
+    Decorator that checks if a user has the required role.
+    
+    :param role: The required role ('admin', 'admin_l1', 'admin_l2', 'teacher', 'substitute')
+    :return: The decorated function if the user has the required role, otherwise redirects to index
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            # Import is_authenticated from app to avoid circular imports
+            from app import is_authenticated
+            
+            if not is_authenticated(required_role=role):
+                flash('Access denied. Insufficient permissions.')
+                return redirect(url_for('index'))
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+
+def convert_utc_to_local(utc_dt, timezone_str='UTC'):
+    """
+    Convert a UTC datetime to a local timezone.
+    
+    :param utc_dt: UTC datetime object
+    :param timezone_str: Timezone string (e.g., 'America/New_York')
+    :return: Datetime object in the specified timezone
+    """
+    if not utc_dt:
+        return None
+    
+    try:
+        # Ensure the datetime is timezone-aware and in UTC
+        if utc_dt.tzinfo is None:
+            utc_dt = pytz.utc.localize(utc_dt)
+        
+        # Convert to the target timezone
+        local_tz = pytz.timezone(timezone_str)
+        local_dt = utc_dt.astimezone(local_tz)
+        
+        return local_dt
+    except Exception as e:
+        print(f"Error converting timezone: {e}")
+        # Return the original datetime if there's an error
+        return utc_dt
+
+
+def format_datetime(dt, format_str='%B %d, %Y at %I:%M %p'):
+    """
+    Format a datetime object as a string.
+    
+    :param dt: Datetime object
+    :param format_str: Format string for strftime
+    :return: Formatted datetime string
+    """
+    if not dt:
+        return ""
+    
+    try:
+        return dt.strftime(format_str)
+    except Exception as e:
+        print(f"Error formatting datetime: {e}")
+        return str(dt)
+
+
+# Register Jinja2 template filters
+def register_template_filters(app):
+    """
+    Register custom template filters for the Flask app.
+    
+    :param app: Flask application instance
+    """
+    @app.template_filter('to_local_tz')
+    def to_local_tz_filter(dt, timezone_str='UTC', format_str='%B %d, %Y at %I:%M %p'):
+        """
+        Jinja2 filter to convert UTC datetime to local timezone and format it.
+        
+        Usage in template: {{ request.created_at | to_local_tz(user.timezone) }}
+        
+        :param dt: UTC datetime object
+        :param timezone_str: Timezone string (e.g., 'America/New_York')
+        :param format_str: Format string for strftime
+        :return: Formatted datetime string in local timezone
+        """
+        local_dt = convert_utc_to_local(dt, timezone_str)
+        return format_datetime(local_dt, format_str)

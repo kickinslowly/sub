@@ -664,7 +664,7 @@
                             <div class="booking-item-details">
                                 <div class="booking-detail">
                                     <span class="booking-detail-label">Request Made</span>
-                                    <span class="booking-detail-value">{{ booking.created_at.strftime('%B %d, %Y at %I:%M %p') }}</span>
+                                    <span class="booking-detail-value">{{ booking.created_at | to_local_tz(user.timezone) }}</span>
                                 </div>
                                 <div class="booking-detail">
                                     <span class="booking-detail-label">Time</span>
@@ -751,7 +751,7 @@
                             <div class="booking-item-details">
                                 <div class="booking-detail">
                                     <span class="booking-detail-label">Request Made</span>
-                                    <span class="booking-detail-value">{{ booking.created_at.strftime('%B %d, %Y at %I:%M %p') }}</span>
+                                    <span class="booking-detail-value">{{ booking.created_at | to_local_tz(user.timezone) }}</span>
                                 </div>
                                 <div class="booking-detail">
                                     <span class="booking-detail-label">Time</span>
@@ -827,7 +827,7 @@
                             <div class="booking-item-details">
                                 <div class="booking-detail">
                                     <span class="booking-detail-label">Request Made</span>
-                                    <span class="booking-detail-value">{{ booking.created_at.strftime('%B %d, %Y at %I:%M %p') }}</span>
+                                    <span class="booking-detail-value">{{ booking.created_at | to_local_tz(user.timezone) }}</span>
                                 </div>
                                 <div class="booking-detail">
                                     <span class="booking-detail-label">Time</span>

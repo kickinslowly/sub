@@ -552,7 +552,7 @@
                                 </div>
                                 <div class="assignment-detail">
                                     <span class="assignment-detail-label">Request Made</span>
-                                    <span class="assignment-detail-value">{{ request.created_at.strftime('%B %d, %Y at %I:%M %p') }}</span>
+                                    <span class="assignment-detail-value">{{ request.created_at | to_local_tz(user.timezone) }}</span>
                                 </div>
                                 {% if request.grade %}
                                 <div class="assignment-detail">
@@ -619,7 +619,7 @@
                                 </div>
                                 <div class="assignment-detail">
                                     <span class="assignment-detail-label">Request Made</span>
-                                    <span class="assignment-detail-value">{{ request.created_at.strftime('%B %d, %Y at %I:%M %p') }}</span>
+                                    <span class="assignment-detail-value">{{ request.created_at | to_local_tz(user.timezone) }}</span>
                                 </div>
                                 {% if request.grade %}
                                 <div class="assignment-detail">

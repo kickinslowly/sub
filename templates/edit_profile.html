@@ -263,6 +263,26 @@
                 </div>
                 
                 <div class="form-group">
+                    <label for="timezone">Timezone:</label>
+                    <select id="timezone" name="timezone" class="form-control">
+                        <option value="UTC" {% if user.timezone == 'UTC' %}selected{% endif %}>UTC (Coordinated Universal Time)</option>
+                        <option value="America/New_York" {% if user.timezone == 'America/New_York' %}selected{% endif %}>Eastern Time (US & Canada)</option>
+                        <option value="America/Chicago" {% if user.timezone == 'America/Chicago' %}selected{% endif %}>Central Time (US & Canada)</option>
+                        <option value="America/Denver" {% if user.timezone == 'America/Denver' %}selected{% endif %}>Mountain Time (US & Canada)</option>
+                        <option value="America/Los_Angeles" {% if user.timezone == 'America/Los_Angeles' %}selected{% endif %}>Pacific Time (US & Canada)</option>
+                        <option value="America/Anchorage" {% if user.timezone == 'America/Anchorage' %}selected{% endif %}>Alaska</option>
+                        <option value="America/Honolulu" {% if user.timezone == 'America/Honolulu' %}selected{% endif %}>Hawaii</option>
+                        <option value="Europe/London" {% if user.timezone == 'Europe/London' %}selected{% endif %}>London</option>
+                        <option value="Europe/Paris" {% if user.timezone == 'Europe/Paris' %}selected{% endif %}>Paris</option>
+                        <option value="Europe/Berlin" {% if user.timezone == 'Europe/Berlin' %}selected{% endif %}>Berlin</option>
+                        <option value="Asia/Tokyo" {% if user.timezone == 'Asia/Tokyo' %}selected{% endif %}>Tokyo</option>
+                        <option value="Asia/Shanghai" {% if user.timezone == 'Asia/Shanghai' %}selected{% endif %}>Shanghai</option>
+                        <option value="Australia/Sydney" {% if user.timezone == 'Australia/Sydney' %}selected{% endif %}>Sydney</option>
+                    </select>
+                    <small class="form-text text-muted">Your timezone will be used to display dates and times in your local timezone.</small>
+                </div>
+                
+                <div class="form-group">
                     <label>Schools:</label>
                     <div class="checkbox-group">
                         {% for school in schools %}
@@ -275,7 +295,7 @@
                     </div>
                     
                     <!-- Hidden field for backward compatibility -->
-                    <input type="hidden" name="school_id" value="{{ user.school_id }}">
+                    <!-- School_id field removed, using schools relationship instead -->
                 </div>
                 
                 <div class="form-group">
@@ -319,5 +339,41 @@
     <footer>
         © 2024 Substitute Portal. All Rights Reserved.
     </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Only auto-detect timezone if the user hasn't set one yet
+            const timezoneSelect = document.getElementById('timezone');
+            if (timezoneSelect && timezoneSelect.value === 'UTC') {
+                try {
+                    // Try to get the user's timezone using Intl.DateTimeFormat
+                    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                    
+                    // Check if the detected timezone is in our dropdown
+                    const options = timezoneSelect.options;
+                    for (let i = 0; i < options.length; i++) {
+                        if (options[i].value === timezone) {
+                            timezoneSelect.value = timezone;
+                            break;
+                        }
+                    }
+                    
+                    // If the exact timezone isn't in our dropdown, try to find a close match
+                    if (timezoneSelect.value === 'UTC' && timezone) {
+                        // Try to match by region (e.g., America/*)
+                        const region = timezone.split('/')[0];
+                        for (let i = 0; i < options.length; i++) {
+                            if (options[i].value.startsWith(region + '/')) {
+                                timezoneSelect.value = options[i].value;
+                                break;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error detecting timezone:', e);
+                }
+            }
+        });
+    </script>
 </body>
 </html>

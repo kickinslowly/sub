@@ -73,7 +73,15 @@
                         <p><strong>Name:</strong> {{ user.name or 'Not provided' }}</p>
                         <p><strong>Email:</strong> {{ user.email or 'Not provided' }}</p>
                         <p><strong>Phone:</strong> {{ user.phone or 'Not provided' }}</p>
-                        <p><strong>Campus:</strong> {{ user.campus or 'Not provided' }}</p>
+                        <p><strong>Schools:</strong> 
+                        {% if user.schools %}
+                            {% for school in user.schools %}
+                                {{ school.name }}{% if not loop.last %}, {% endif %}
+                            {% endfor %}
+                        {% else %}
+                            Not provided
+                        {% endif %}
+                        </p>
                         <p><strong>Role:</strong> <span class="badge {% if user.role == 'teacher' %}bg-primary{% else %}bg-success{% endif %}">{{ user.role.title() }}</span></p>
                     </div>
                     <div class="col-md-6">
@@ -124,7 +132,7 @@
                             <tr>
                                 <td>{{ request.date.strftime('%Y-%m-%d') }}</td>
                                 <td>{{ request.time }}</td>
-                                <td>{{ request.created_at.strftime('%Y-%m-%d %I:%M %p') }}</td>
+                                <td>{{ request.created_at | to_local_tz(user.timezone, '%Y-%m-%d %I:%M %p') }}</td>
                                 <td>
                                     <span class="badge {% if request.status == 'Open' %}bg-warning{% else %}bg-success{% endif %}">
                                         {{ request.status }}
@@ -170,7 +178,7 @@
                             <tr>
                                 <td>{{ request_tuple[0].date.strftime('%Y-%m-%d') }}</td>
                                 <td>{{ request_tuple[0].time }}</td>
-                                <td>{{ request_tuple[0].created_at.strftime('%Y-%m-%d %I:%M %p') }}</td>
+                                <td>{{ request_tuple[0].created_at | to_local_tz(user.timezone, '%Y-%m-%d %I:%M %p') }}</td>
                                 <td>{{ request_tuple.teacher_name }}</td>
                                 <td>{{ request_tuple[0].details or 'No details provided' }}</td>
                             </tr>

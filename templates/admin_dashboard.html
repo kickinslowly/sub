@@ -456,7 +456,7 @@
                     </div>
                     
                     <!-- Admin Management Card (Only visible to Tech Coordinators) -->
-                    {% if is_tech_coordinator %}
+                    {% if is_tech_coordinator_value %}
                     <div class="card h-100 shadow-sm">
                         <div class="card-header">
                             <h2><i class="fas fa-shield-alt"></i> Admin Management</h2>
@@ -576,7 +576,7 @@
                                             <div>
                                                 <h5 class="mb-1">{{ request.date.strftime('%B %d, %Y') }}</h5>
                                                 <p class="mb-1 text-muted small">
-                                                    <i class="fas fa-clock"></i> Created: {{ request.created_at.strftime('%B %d, %Y at %I:%M %p') }}
+                                                    <i class="fas fa-clock"></i> Created: {{ request.created_at | to_local_tz(user.timezone) }}
                                                 </p>
                                             </div>
                                             <div>
@@ -638,7 +638,7 @@
                                             <div>
                                                 <h5 class="mb-1">{{ request.date.strftime('%B %d, %Y') }}</h5>
                                                 <p class="mb-1 text-muted small">
-                                                    <i class="fas fa-clock"></i> Created: {{ request.created_at.strftime('%B %d, %Y at %I:%M %p') }}
+                                                    <i class="fas fa-clock"></i> Created: {{ request.created_at | to_local_tz(user.timezone) }}
                                                 </p>
                                             </div>
                                             <div>
@@ -826,7 +826,7 @@
     </script>
 
         <!-- Transfer Ownership Section (at the bottom of the page) -->
-        {% if is_tech_coordinator %}
+        {% if is_tech_coordinator_value %}
         <div class="row mt-4">
             <div class="col-12">
                 <div class="card">

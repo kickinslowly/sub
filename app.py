@@ -10,6 +10,7 @@ import os
 import sqlalchemy.exc  # Import SQLAlchemy exceptions
 from werkzeug.security import check_password_hash
 from twilio.rest import Client
+from helpers import requires_role, is_tech_coordinator, is_admin_l2, is_admin, register_template_filters
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -19,7 +20,32 @@ app.config.from_object(Config)
 from extensions import db, mail
 db.init_app(app)
 mail.init_app(app)
+
+# Register custom template filters
+register_template_filters(app)
+
+# Initialize database migrations
+from migrations import init_migrations
+init_migrations(app)
 oauth = OAuth(app)
+
+# Initialize database backup scheduler
+from scheduler import start_scheduler, create_immediate_backup
+from backup import get_backup_info, ensure_backup_dir
+
+# Ensure backup directory exists
+with app.app_context():
+    ensure_backup_dir()
+    
+    # Create initial backups if they don't exist
+    backup_info = get_backup_info()
+    if not backup_info['daily_backup']['exists']:
+        create_immediate_backup('daily')
+    if not backup_info['weekly_backup']['exists']:
+        create_immediate_backup('weekly')
+    
+    # Start the scheduler
+    start_scheduler()
 
 # Initialize Twilio client
 if hasattr(Config, 'TWILIO_ACCOUNT_SID') and hasattr(Config, 'TWILIO_AUTH_TOKEN'):
@@ -343,10 +369,16 @@ def update_database_schema():
         import traceback
         traceback.print_exc()
 
-# Add the seed function to the database initialization
+# Initialize the database and ensure all tables and columns are created
 with app.app_context():
-    # db.create_all() is already called at the beginning of the app
+    # First create all tables based on models
+    db.create_all()
+    print("All database tables created based on models")
+    
+    # Then update schema for any specific migrations
     update_database_schema()  # Update the database schema if needed
+    
+    # Finally seed the database with initial data
     seed_database()  # Seed the database with default data
 
 
@@ -587,14 +619,21 @@ def substitute_dashboard():
 
         # Check for school match
         school_match = False
-        # If substitute doesn't have a school_id assigned, show all schools
-        if logged_in_user.school_id is None:
+        # Get the set of school IDs for the substitute and teacher
+        sub_school_ids = {school.id for school in logged_in_user.schools}
+        teacher_school_ids = {school.id for school in teacher.schools}
+        
+        # If substitute doesn't have any schools assigned, show all schools
+        if not sub_school_ids:
             school_match = True
-        # If request doesn't have a school_id assigned, show to all substitutes
-        elif request.school_id is None:
+        # If teacher doesn't have any schools assigned, show to all substitutes
+        elif not teacher_school_ids:
             school_match = True
-        # If request has a school_id and it matches the substitute's school_id
-        elif request.school_id == logged_in_user.school_id:
+        # If there's an overlap in schools
+        elif sub_school_ids.intersection(teacher_school_ids):
+            school_match = True
+        # If request has a school_id and it's in the substitute's schools
+        elif request.school_id and request.school_id in sub_school_ids:
             school_match = True
             
         # If grade, subject, and school match, add to matching requests
@@ -638,27 +677,11 @@ def edit_profile(user_id):
         user_to_edit.name = request.form['name']
         user_to_edit.email = request.form['email']
         user_to_edit.phone = request.form.get('phone', None)
-        
-        # Handle school_id and campus
-        school_id = request.form.get('school_id')
-        campus = request.form.get('campus', None)
+        user_to_edit.timezone = request.form.get('timezone', 'UTC')  # Get timezone or default to UTC
         
         # Get multiple schools
         school_ids = request.form.getlist('schools')  # List of selected school IDs
         school_objs = School.query.filter(School.id.in_(school_ids)).all()
-        
-        # For backward compatibility, set school_id to the first selected school or keep existing
-        if school_objs and not school_id:
-            school_id = school_objs[0].id
-        # If school_id is not provided but campus is, look up the school by campus code
-        elif not school_id and campus:
-            school = School.query.filter_by(code=campus.strip().upper()).first()
-            if school:
-                school_id = school.id
-        
-        # Update both fields for backward compatibility
-        user_to_edit.campus = campus
-        user_to_edit.school_id = school_id
 
         # Update grades, subjects, and schools
         grade_ids = request.form.getlist('grades')  # List of selected grade IDs
@@ -723,6 +746,13 @@ def api_teacher_bookings():
     # Convert bookings to JSON-serializable format
     bookings_data = []
     for booking in bookings:
+        # Get user's timezone or default to UTC
+        user_timezone = logged_in_user.timezone or 'UTC'
+        
+        # Convert created_at to user's timezone
+        from helpers import convert_utc_to_local, format_datetime
+        local_created_at = convert_utc_to_local(booking.created_at, user_timezone)
+        
         booking_data = {
             "id": booking.id,
             "date": booking.date.strftime('%Y-%m-%d'),
@@ -731,7 +761,8 @@ def api_teacher_bookings():
             "status": booking.status,
             "details": booking.details,
             "created_at": booking.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-            "created_at_formatted": booking.created_at.strftime('%B %d, %Y at %I:%M %p'),
+            "created_at_formatted": format_datetime(local_created_at, '%B %d, %Y at %I:%M %p'),
+            "timezone": user_timezone,
         }
 
         # Add substitute info if available
@@ -747,16 +778,12 @@ def api_teacher_bookings():
 
 
 @app.route('/admin_dashboard', methods=['GET'])
+@requires_role('admin')
 def admin_dashboard():
     """Dashboard for admins."""
-    # Ensure user is authenticated and has admin role (either level)
-    if not is_authenticated(required_role='admin'):
-        flash('Access denied. Admins only.')
-        return redirect(url_for('index'))
-    
     # Get the logged-in user to determine admin level
     logged_in_user = get_logged_in_user()
-    is_tech_coordinator = logged_in_user.role == 'admin_l1'
+    is_tech_coordinator_value = is_tech_coordinator(logged_in_user)
 
     # Get all teachers for the create request form and display
     teachers = User.query.filter_by(role='teacher').order_by(User.name).all()
@@ -804,15 +831,31 @@ def admin_dashboard():
     if search_status:
         filters.append(SubstituteRequest.status == search_status)
         
-    # Filter by school_id for level 2 admins
-    if logged_in_user.role == 'admin_l2' and logged_in_user.school_id is not None:
-        # Level 2 admins should only see requests from their school
-        # Include requests where school_id matches admin's school_id or is NULL
-        school_filter = db.or_(
-            SubstituteRequest.school_id == logged_in_user.school_id,
-            SubstituteRequest.school_id == None
-        )
-        filters.append(school_filter)
+    # Filter by school for level 2 admins
+    if logged_in_user.role == 'admin_l2' and logged_in_user.schools:
+        # Level 2 admins should only see requests from their schools
+        # Get the admin's school IDs
+        admin_school_ids = [school.id for school in logged_in_user.schools]
+        
+        # Get all teachers who share at least one school with the admin
+        teachers_in_admin_schools = User.query.filter(
+            User.role == 'teacher',
+            User.schools.any(School.id.in_(admin_school_ids))
+        ).all()
+        
+        # Get the IDs of these teachers
+        teacher_ids = [teacher.id for teacher in teachers_in_admin_schools]
+        
+        # Filter requests to only include those from these teachers or with no school
+        if teacher_ids:
+            school_filter = db.or_(
+                SubstituteRequest.teacher_id.in_(teacher_ids),
+                SubstituteRequest.school_id == None
+            )
+            filters.append(school_filter)
+        else:
+            # If no teachers match, only show requests with no school
+            filters.append(SubstituteRequest.school_id == None)
 
     # Apply all filters to the query
     if filters:
@@ -841,18 +884,15 @@ def admin_dashboard():
         teachers=teachers,
         grades=grades,
         subjects=subjects,
-        is_tech_coordinator=is_tech_coordinator,  # Pass this to the template
+        is_tech_coordinator_value=is_tech_coordinator_value,  # Pass this to the template
         request=request  # Pass the request object to access args in the template
     )
 
 
 @app.route('/admin_request', methods=['GET'])
+@requires_role('admin')
 def admin_request_form():
     """Display the form for admins to create substitute requests."""
-    # Ensure user is authenticated and has admin role
-    if not is_authenticated(required_role='admin'):
-        flash('Access denied. Admins only.')
-        return redirect(url_for('index'))
         
     # Get all teachers for the dropdown
     teachers = User.query.filter_by(role='teacher').order_by(User.name).all()
@@ -861,12 +901,9 @@ def admin_request_form():
 
 
 @app.route('/admin_create_request', methods=['POST'])
+@requires_role('admin')
 def admin_create_request():
     """Handle admin creation of substitute requests."""
-    # Ensure user is authenticated and has admin role
-    if not is_authenticated(required_role='admin'):
-        flash('Access denied. Admins only.')
-        return redirect(url_for('index'))
 
     try:
         # Get form data
@@ -911,10 +948,10 @@ def admin_create_request():
         # Generate unique token
         token = str(uuid.uuid4())
 
-        # Get teacher's school_id
+        # Get teacher's first school if available
         teacher_school_id = None
-        if teacher:
-            teacher_school_id = teacher.school_id
+        if teacher and teacher.schools:
+            teacher_school_id = teacher.schools[0].id
             
         # Create and save substitute request
         sub_request = SubstituteRequest(
@@ -934,12 +971,9 @@ def admin_create_request():
         # Generate dynamic link
         request_link = url_for('view_sub_request', token=token, _external=True)
 
-        # Get all substitutes
-        all_substitutes = User.query.filter_by(role='substitute').all()
-
-        # Use the helper function to filter eligible substitutes
+        # Use the helper function to filter eligible substitutes at the database level
         from helpers import filter_eligible_substitutes
-        eligible_substitutes = filter_eligible_substitutes(teacher, all_substitutes)
+        eligible_substitutes = filter_eligible_substitutes(teacher)
 
         # Get grade and subject names
         grade_name = "Not specified"
@@ -1067,6 +1101,11 @@ def request_form_and_submit():
 
                 try:
                     # Create and save substitute request
+                    # Get teacher's first school if available
+                    teacher_school_id = None
+                    if teacher.schools:
+                        teacher_school_id = teacher.schools[0].id
+                        
                     sub_request = SubstituteRequest(
                         teacher_id=teacher.id,
                         date=datetime.strptime(date, '%m/%d/%Y'),
@@ -1075,7 +1114,7 @@ def request_form_and_submit():
                         reason=reason,
                         grade_id=grade_id,
                         subject_id=subject_id,
-                        school_id=teacher.school_id,  # Include teacher's school_id
+                        school_id=teacher_school_id,  # Use teacher's first school
                         token=token
                     )
                     db.session.add(sub_request)
@@ -1092,12 +1131,9 @@ def request_form_and_submit():
                 # **Generate dynamic link**
                 request_link = url_for('view_sub_request', token=token, _external=True)
 
-                # Get all substitutes
-                all_substitutes = User.query.filter_by(role='substitute').all()
-
-                # Use the helper function to filter eligible substitutes
+                # Use the helper function to filter eligible substitutes at the database level
                 from helpers import filter_eligible_substitutes
-                eligible_substitutes = filter_eligible_substitutes(teacher, all_substitutes)
+                eligible_substitutes = filter_eligible_substitutes(teacher)
 
                 # **Send notification with link to eligible substitutes**
                 subject = "New Substitute Request Available"
@@ -1258,12 +1294,9 @@ def view_sub_request(token):
 
 
 @app.route('/manage_admins', methods=['GET'])
+@requires_role('admin_l1')
 def manage_admins():
     """Route for tech coordinators to manage level 2 admins."""
-    # Ensure user is authenticated and has tech coordinator role
-    if not is_authenticated(required_role='admin_l1'):
-        flash('Access denied. Tech Coordinators only.')
-        return redirect(url_for('index'))
     
     # Get all level 2 admins
     admins = User.query.filter_by(role='admin_l2').order_by(User.name).all()
@@ -1280,20 +1313,19 @@ def manage_admins():
 
 
 @app.route('/add_admin', methods=['POST'])
+@requires_role('admin_l1')
 def add_admin():
     """Route for tech coordinators to create level 2 admin accounts."""
-    # Ensure user is authenticated and has tech coordinator role
-    if not is_authenticated(required_role='admin_l1'):
-        flash('Access denied. Tech Coordinators only.')
-        return redirect(url_for('index'))
     
     # Get form data
     name = request.form.get('name')
     email = request.form.get('email')
     phone = request.form.get('phone')
-    school_id = request.form.get('school_id')
-    campus = request.form.get('campus')  # Keep for backward compatibility
     admin_type = request.form.get('admin_type', 'front_office')  # front_office or principal
+    
+    # Get selected schools
+    school_ids = request.form.getlist('schools')  # List of selected school IDs
+    school_objs = School.query.filter(School.id.in_(school_ids)).all()
     
     # Validate required inputs
     if not name or not email:
@@ -1306,12 +1338,6 @@ def add_admin():
         flash('A user with this email already exists!')
         return redirect(url_for('manage_admins'))
     
-    # If school_id is not provided but campus is, look up the school by campus code
-    if not school_id and campus:
-        school = School.query.filter_by(code=campus.strip().upper()).first()
-        if school:
-            school_id = school.id
-    
     # Create the new admin user
     logged_in_user = get_logged_in_user()
     new_admin = User(
@@ -1319,10 +1345,11 @@ def add_admin():
         email=email,
         role='admin_l2',
         phone=phone,
-        campus=campus,  # Keep for backward compatibility
-        school_id=school_id,
         created_by=logged_in_user.id if logged_in_user else None
     )
+    
+    # Assign schools to the new admin
+    new_admin.schools.extend(school_objs)
     
     # Add and commit changes to the database
     db.session.add(new_admin)
@@ -1478,8 +1505,6 @@ def manage_users():
             'email': '',
             'role': 'teacher',  # Default role
             'phone': '',
-            'campus': '',
-            'school_id': '',
             'userId': ''
         }  # Initialize all formData properties to prevent Jinja2 errors
     )
@@ -1565,8 +1590,6 @@ def add_user():
     email = request.form.get('email')
     role = request.form.get('role')
     phone = request.form.get('phone')
-    school_id = request.form.get('school_id')
-    campus = request.form.get('campus')  # Keep for backward compatibility
 
     # Collect multiple grades, subjects, and schools from checkboxes
     grade_ids = request.form.getlist('grades')  # List of selected grade IDs
@@ -1594,23 +1617,12 @@ def add_user():
     subject_objs = Subject.query.filter(Subject.id.in_(subject_ids)).all()
     school_objs = School.query.filter(School.id.in_(school_ids)).all()
 
-    # For backward compatibility, set school_id to the first selected school or None
-    if school_objs and not school_id:
-        school_id = school_objs[0].id
-    # If school_id is not provided but campus is, look up the school by campus code
-    elif not school_id and campus:
-        school = School.query.filter_by(code=campus.strip().upper()).first()
-        if school:
-            school_id = school.id
-
     # Create the new user
     new_user = User(
         name=name,
         email=email,
         role=role,
-        phone=phone,
-        campus=campus,  # Keep for backward compatibility
-        school_id=school_id  # Keep for backward compatibility
+        phone=phone
     )
 
     # Assign grades, subjects, and schools to the new user
@@ -1639,26 +1651,9 @@ def edit_user(user_id):
     user.role = request.form['role']
     user.phone = request.form.get('phone', None)
     
-    # Handle school_id and campus
-    school_id = request.form.get('school_id')
-    campus = request.form.get('campus', None)
-    
     # Get multiple schools
     school_ids = request.form.getlist('schools')  # List of selected school IDs
     school_objs = School.query.filter(School.id.in_(school_ids)).all()
-    
-    # For backward compatibility, set school_id to the first selected school or keep existing
-    if school_objs and not school_id:
-        school_id = school_objs[0].id
-    # If school_id is not provided but campus is, look up the school by campus code
-    elif not school_id and campus:
-        school = School.query.filter_by(code=campus.strip().upper()).first()
-        if school:
-            school_id = school.id
-    
-    # Update both fields for backward compatibility
-    user.campus = campus
-    user.school_id = school_id
 
     # Update grades, subjects, and schools
     grade_ids = request.form.getlist('grades')  # List of selected grade IDs
@@ -2040,12 +2035,13 @@ def delete_school(school_id):
     
     try:
         # Check if there are users associated with this school
-        users_count = User.query.filter_by(school_id=school_id).count()
+        users_count = len(school.associated_users)
         if users_count > 0:
             flash(f'Cannot delete school "{school.name}" because it has {users_count} users associated with it. Reassign these users to another school first.')
             return redirect(url_for('manage_schools'))
         
         # Check if there are substitute requests associated with this school
+        # We still need to check SubstituteRequest.school_id since it's not a legacy field
         requests_count = SubstituteRequest.query.filter_by(school_id=school_id).count()
         if requests_count > 0:
             flash(f'Cannot delete school "{school.name}" because it has {requests_count} substitute requests associated with it.')
