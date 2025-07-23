@@ -113,7 +113,62 @@ def generate_substitute_confirmation_email(teacher, sub_request):
     return subject, body
 
 
-def filter_eligible_substitutes(teacher, substitutes=None):
+def is_substitute_available(substitute, date, time_range=None):
+    """
+    Checks if a substitute is available for a specific date and time.
+    
+    :param substitute: The substitute user object
+    :param date: The date to check (datetime.date object)
+    :param time_range: Optional time range to check (e.g., "08:00-12:00")
+    :return: True if available, False if unavailable
+    """
+    from models import SubstituteUnavailability
+    from datetime import datetime, timedelta
+    
+    # Check for direct date match
+    unavailability = SubstituteUnavailability.query.filter_by(
+        user_id=substitute.id,
+        date=date
+    ).all()
+    
+    # If there's an all-day unavailability for this date, the substitute is unavailable
+    for item in unavailability:
+        if item.all_day:
+            return False
+        
+        # If checking a specific time range and there's an overlap, the substitute is unavailable
+        if time_range and item.time_range:
+            # Simple overlap check - this could be enhanced for more complex time comparisons
+            if time_range == item.time_range:
+                return False
+    
+    # Check for repeating unavailability
+    # Get the day of week name for the requested date
+    day_of_week = date.strftime("%A")  # Returns Monday, Tuesday, etc.
+    
+    # Find any repeating unavailability for this day of week
+    repeating_unavailability = SubstituteUnavailability.query.filter(
+        SubstituteUnavailability.user_id == substitute.id,
+        SubstituteUnavailability.repeat_pattern == day_of_week,
+        (SubstituteUnavailability.repeat_until >= date) | (SubstituteUnavailability.repeat_until == None)
+    ).all()
+    
+    # If there's a repeating all-day unavailability for this day of week, the substitute is unavailable
+    for item in repeating_unavailability:
+        if item.all_day:
+            return False
+        
+        # If checking a specific time range and there's an overlap, the substitute is unavailable
+        if time_range and item.time_range:
+            # Simple overlap check - this could be enhanced for more complex time comparisons
+            if time_range == item.time_range:
+                return False
+    
+    # If we get here, the substitute is available
+    return True
+
+
+def filter_eligible_substitutes(teacher, request_date=None, request_time=None, substitutes=None):
     """
     Filters substitutes based on matching grades and subjects with the teacher.
     Uses SQLAlchemy queries to filter at the database level for better performance.
@@ -125,8 +180,11 @@ def filter_eligible_substitutes(teacher, substitutes=None):
     3. If the substitute has specified a subject and the teacher's subject is specific and doesn't match, 
        the substitute does not get the request.
     4. If the substitute and teacher share at least one school, they match.
+    5. If a substitute has marked themselves as unavailable for the date/time, they are excluded.
 
     :param teacher: The teacher object
+    :param request_date: The date of the request (datetime.date object)
+    :param request_time: The time range of the request (e.g., "08:00-12:00")
     :param substitutes: Optional parameter (kept for backward compatibility)
     :return: Filtered list of eligible substitutes
     """
@@ -208,7 +266,16 @@ def filter_eligible_substitutes(teacher, substitutes=None):
             )
         )).all()
     )
-
+    
+    # If date and time are provided, filter out unavailable substitutes
+    if request_date:
+        # Filter out substitutes who are unavailable for this date/time
+        available_substitutes = []
+        for substitute in eligible_substitutes:
+            if is_substitute_available(substitute, request_date, request_time):
+                available_substitutes.append(substitute)
+        return available_substitutes
+    
     return eligible_substitutes
 
 

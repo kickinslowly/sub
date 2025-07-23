@@ -2,7 +2,7 @@ from flask import Flask, redirect, url_for, session, render_template, request, f
 from authlib.integrations.flask_client import OAuth
 from config import Config
 from datetime import datetime, timedelta
-from models import User, SubstituteRequest, Grade, Subject, School, user_grades, user_subjects # Import models
+from models import User, SubstituteRequest, SubstituteUnavailability, Grade, Subject, School, user_grades, user_subjects # Import models
 from sqlalchemy.orm import aliased
 import uuid
 import sqlite3
@@ -639,11 +639,27 @@ def substitute_dashboard():
         # If grade, subject, and school match, add to matching requests
         if grade_match and subject_match and school_match:
             matching_requests.append((request, teacher_name, teacher))
+    
+    # Get unavailability data for the substitute
+    unavailability = SubstituteUnavailability.query.filter_by(user_id=logged_in_user.id).all()
+    
+    # Convert to JSON-serializable format for passing to template
+    unavailability_data = []
+    for item in unavailability:
+        unavailability_data.append({
+            'id': item.id,
+            'date': item.date.strftime('%Y-%m-%d'),
+            'all_day': item.all_day,
+            'time_range': item.time_range,
+            'repeat_pattern': item.repeat_pattern,
+            'repeat_until': item.repeat_until.strftime('%Y-%m-%d') if item.repeat_until else None
+        })
 
     return render_template('substitute_dashboard.html', 
                           user=logged_in_user, 
                           accepted_requests=accepted_requests,
-                          matching_requests=matching_requests)
+                          matching_requests=matching_requests,
+                          unavailability_data=unavailability_data)
 
 
 @app.route('/edit_profile/<int:user_id>', methods=['GET', 'POST'])
@@ -727,6 +743,91 @@ def dashboard():
     total_hours_out = calculate_total_hours_out(past_bookings)
     
     return render_template('dashboard.html', user=logged_in_user, past_bookings=past_bookings, total_hours_out=total_hours_out)
+
+
+@app.route('/api/unavailability', methods=['GET', 'POST'])
+def api_unavailability():
+    """API endpoint to get and save substitute unavailability."""
+    logged_in_user = get_logged_in_user()
+    if not logged_in_user:
+        return jsonify({"error": "Not authenticated"}), 401
+    
+    if logged_in_user.role != 'substitute':
+        return jsonify({"error": "Only substitutes can access this endpoint"}), 403
+    
+    if request.method == 'GET':
+        # Get all unavailability records for the substitute
+        unavailability = SubstituteUnavailability.query.filter_by(user_id=logged_in_user.id).all()
+        
+        # Convert to JSON-serializable format
+        result = []
+        for item in unavailability:
+            result.append({
+                'id': item.id,
+                'date': item.date.strftime('%Y-%m-%d'),
+                'all_day': item.all_day,
+                'time_range': item.time_range,
+                'repeat_pattern': item.repeat_pattern,
+                'repeat_until': item.repeat_until.strftime('%Y-%m-%d') if item.repeat_until else None
+            })
+        
+        return jsonify(result)
+    
+    elif request.method == 'POST':
+        # Get data from request
+        data = request.json
+        
+        # Validate required fields
+        if 'date' not in data:
+            return jsonify({"error": "Date is required"}), 400
+        
+        # Create new unavailability record
+        try:
+            new_unavailability = SubstituteUnavailability(
+                user_id=logged_in_user.id,
+                date=datetime.strptime(data['date'], '%Y-%m-%d').date(),
+                all_day=data.get('all_day', True),
+                time_range=data.get('time_range'),
+                repeat_pattern=data.get('repeat_pattern'),
+                repeat_until=datetime.strptime(data['repeat_until'], '%Y-%m-%d').date() if data.get('repeat_until') else None
+            )
+            
+            db.session.add(new_unavailability)
+            db.session.commit()
+            
+            return jsonify({"message": "Unavailability saved successfully", "id": new_unavailability.id})
+        
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error saving unavailability: {e}")
+            return jsonify({"error": "Error saving unavailability"}), 500
+
+
+@app.route('/api/unavailability/<int:unavailability_id>', methods=['DELETE'])
+def api_delete_unavailability(unavailability_id):
+    """API endpoint to delete substitute unavailability."""
+    logged_in_user = get_logged_in_user()
+    if not logged_in_user:
+        return jsonify({"error": "Not authenticated"}), 401
+    
+    if logged_in_user.role != 'substitute':
+        return jsonify({"error": "Only substitutes can access this endpoint"}), 403
+    
+    # Get the unavailability record
+    unavailability = SubstituteUnavailability.query.filter_by(id=unavailability_id, user_id=logged_in_user.id).first()
+    
+    if not unavailability:
+        return jsonify({"error": "Unavailability record not found"}), 404
+    
+    try:
+        db.session.delete(unavailability)
+        db.session.commit()
+        return jsonify({"message": "Unavailability deleted successfully"})
+    
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error deleting unavailability: {e}")
+        return jsonify({"error": "Error deleting unavailability"}), 500
 
 
 @app.route('/api/teacher_bookings')

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Date, Text, DateTime
+from sqlalchemy import Column, Integer, String, ForeignKey, Date, Text, DateTime, Boolean
 from extensions import db  # Use `db` from extensions.py
 from sqlalchemy.orm import relationship
 import uuid  # Import UUID for generating unique tokens
@@ -57,6 +57,20 @@ class User(db.Model):
     grades = db.relationship('Grade', secondary=user_grades, backref='users')
     subjects = db.relationship('Subject', secondary=user_subjects, backref='users')
     schools = db.relationship('School', secondary=user_schools, backref='associated_users')
+
+
+class SubstituteUnavailability(db.Model):
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('user.id'), nullable=False)
+    date = Column(Date, nullable=False)
+    all_day = Column(Boolean, default=True)  # True if unavailable all day, False if specific hours
+    time_range = Column(String(50), nullable=True)  # Format: "08:00-12:00" (if all_day is False)
+    repeat_pattern = Column(String(20), nullable=True)  # e.g., "Monday", "Tuesday", etc.
+    repeat_until = Column(Date, nullable=True)  # Date until which the pattern repeats
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    # Relationship to User
+    user = relationship("User", foreign_keys=[user_id], backref="unavailability")
 
 
 class SubstituteRequest(db.Model):

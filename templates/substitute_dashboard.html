@@ -6,6 +6,7 @@
     <title>Substitute Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <style>
         :root {
             --primary-color: #2575fc;
@@ -512,6 +513,9 @@
                 <div class="main-tab" data-tab="your-assignments">
                     <i class="fas fa-clipboard-list"></i> Your Assignments
                 </div>
+                <div class="main-tab" data-tab="unavailability-calendar">
+                    <i class="fas fa-calendar-times"></i> Unavailability Calendar
+                </div>
             </div>
 
             <!-- Tab Contents -->
@@ -652,6 +656,32 @@
                     {% endif %}
                 </div>
             </div>
+            
+            <!-- Unavailability Calendar Tab -->
+            <div id="tab-unavailability-calendar" class="main-content">
+                <div class="card-header" style="margin-top: 20px;">
+                    <h3><i class="fas fa-calendar-alt"></i> Mark Your Unavailability</h3>
+                    <p style="margin-top: 10px;">Click on dates to mark when you're unavailable for substitute assignments.</p>
+                </div>
+                
+                <div style="display: flex; flex-wrap: wrap; margin-top: 20px;">
+                    <!-- Calendar Container -->
+                    <div style="flex: 2; min-width: 300px; margin-right: 20px;">
+                        <div id="unavailability-calendar" style="background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);"></div>
+                    </div>
+                    
+                    <!-- Unavailability List -->
+                    <div style="flex: 1; min-width: 250px;">
+                        <div style="background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                            <h4 style="margin-bottom: 15px;"><i class="fas fa-list"></i> Your Unavailable Dates</h4>
+                            <div id="unavailability-list">
+                                <p class="no-assignments" id="no-unavailability-message">No unavailable dates set.</p>
+                                <!-- Unavailability items will be added here dynamically -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -661,7 +691,77 @@
             Operation completed successfully!
         </div>
     </div>
+    
+    <!-- Unavailability Modal -->
+    <div id="unavailability-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+        <div style="background: white; padding: 25px; border-radius: 10px; width: 90%; max-width: 500px; box-shadow: 0 5px 15px rgba(0,0,0,0.2);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 id="unavailability-modal-title">Set Unavailability</h3>
+                <button id="close-unavailability-modal" style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">&times;</button>
+            </div>
+            
+            <form id="unavailability-form">
+                <input type="hidden" id="unavailability-date" name="date">
+                
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 10px; font-weight: 500;">Availability Status:</label>
+                    <div style="display: flex; gap: 15px;">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="radio" name="availability-type" value="all-day" checked style="margin-right: 8px;">
+                            Unavailable All Day
+                        </label>
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="radio" name="availability-type" value="specific-hours" style="margin-right: 8px;">
+                            Select Hours
+                        </label>
+                    </div>
+                </div>
+                
+                <div id="time-range-container" style="margin-bottom: 20px; display: none;">
+                    <label style="display: block; margin-bottom: 10px; font-weight: 500;">Time Range:</label>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="text" id="time-start" placeholder="Start Time" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                        <span>to</span>
+                        <input type="text" id="time-end" placeholder="End Time" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                    </div>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="repeat-checkbox" style="margin-right: 8px;">
+                        Repeat this unavailability
+                    </label>
+                </div>
+                
+                <div id="repeat-options" style="margin-bottom: 20px; display: none;">
+                    <label style="display: block; margin-bottom: 10px; font-weight: 500;">Repeat Pattern:</label>
+                    <select id="repeat-pattern" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                        <option value="Monday">Every Monday</option>
+                        <option value="Tuesday">Every Tuesday</option>
+                        <option value="Wednesday">Every Wednesday</option>
+                        <option value="Thursday">Every Thursday</option>
+                        <option value="Friday">Every Friday</option>
+                        <option value="Saturday">Every Saturday</option>
+                        <option value="Sunday">Every Sunday</option>
+                    </select>
+                    
+                    <div style="margin-top: 15px;">
+                        <label style="display: block; margin-bottom: 10px; font-weight: 500;">Repeat Until:</label>
+                        <input type="text" id="repeat-until" placeholder="Select End Date" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                    </div>
+                </div>
+                
+                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                    <button type="button" id="cancel-unavailability" class="btn" style="background-color: #6c757d;">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Unavailability</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
+    <!-- Include Flatpickr JS -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    
     <!-- JavaScript for reactivity -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
@@ -740,6 +840,314 @@
                         toast.style.display = 'none';
                     }, 3000);
                 }
+            }
+            
+            // Unavailability Calendar Functionality
+            const unavailabilityCalendarEl = document.getElementById('unavailability-calendar');
+            const unavailabilityModal = document.getElementById('unavailability-modal');
+            const unavailabilityForm = document.getElementById('unavailability-form');
+            const unavailabilityDateInput = document.getElementById('unavailability-date');
+            const closeModalBtn = document.getElementById('close-unavailability-modal');
+            const cancelBtn = document.getElementById('cancel-unavailability');
+            const availabilityTypeRadios = document.querySelectorAll('input[name="availability-type"]');
+            const timeRangeContainer = document.getElementById('time-range-container');
+            const timeStartInput = document.getElementById('time-start');
+            const timeEndInput = document.getElementById('time-end');
+            const repeatCheckbox = document.getElementById('repeat-checkbox');
+            const repeatOptions = document.getElementById('repeat-options');
+            const repeatUntilInput = document.getElementById('repeat-until');
+            const unavailabilityList = document.getElementById('unavailability-list');
+            const noUnavailabilityMessage = document.getElementById('no-unavailability-message');
+            
+            // Store unavailability data
+            let unavailabilityData = [];
+            
+            // Initialize time pickers
+            if (timeStartInput && timeEndInput) {
+                flatpickr(timeStartInput, {
+                    enableTime: true,
+                    noCalendar: true,
+                    dateFormat: "H:i",
+                    time_24hr: true
+                });
+                
+                flatpickr(timeEndInput, {
+                    enableTime: true,
+                    noCalendar: true,
+                    dateFormat: "H:i",
+                    time_24hr: true
+                });
+            }
+            
+            // Initialize repeat until date picker
+            if (repeatUntilInput) {
+                flatpickr(repeatUntilInput, {
+                    dateFormat: "Y-m-d",
+                    minDate: "today"
+                });
+            }
+            
+            // Initialize calendar
+            if (unavailabilityCalendarEl) {
+                const calendar = flatpickr(unavailabilityCalendarEl, {
+                    inline: true,
+                    mode: "multiple",
+                    dateFormat: "Y-m-d",
+                    minDate: "today",
+                    onChange: function(selectedDates, dateStr, instance) {
+                        // Remove the last selected date (we'll handle it manually)
+                        if (selectedDates.length > 0) {
+                            const lastDate = selectedDates.pop();
+                            instance.clear();
+                            
+                            // Format date for display
+                            const formattedDate = lastDate.toLocaleDateString('en-US', {
+                                weekday: 'long',
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
+                            });
+                            
+                            // Set the date in the modal
+                            unavailabilityDateInput.value = formatDateForServer(lastDate);
+                            document.getElementById('unavailability-modal-title').textContent = `Set Unavailability: ${formattedDate}`;
+                            
+                            // Show the modal
+                            unavailabilityModal.style.display = 'flex';
+                        }
+                    }
+                });
+                
+                // Load existing unavailability data
+                loadUnavailabilityData();
+            }
+            
+            // Toggle time range inputs based on availability type
+            availabilityTypeRadios.forEach(radio => {
+                radio.addEventListener('change', function() {
+                    if (this.value === 'specific-hours') {
+                        timeRangeContainer.style.display = 'block';
+                    } else {
+                        timeRangeContainer.style.display = 'none';
+                    }
+                });
+            });
+            
+            // Toggle repeat options based on repeat checkbox
+            if (repeatCheckbox) {
+                repeatCheckbox.addEventListener('change', function() {
+                    if (this.checked) {
+                        repeatOptions.style.display = 'block';
+                    } else {
+                        repeatOptions.style.display = 'none';
+                    }
+                });
+            }
+            
+            // Close modal handlers
+            if (closeModalBtn) {
+                closeModalBtn.addEventListener('click', function() {
+                    unavailabilityModal.style.display = 'none';
+                });
+            }
+            
+            if (cancelBtn) {
+                cancelBtn.addEventListener('click', function() {
+                    unavailabilityModal.style.display = 'none';
+                });
+            }
+            
+            // Handle form submission
+            if (unavailabilityForm) {
+                unavailabilityForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    // Get form data
+                    const date = unavailabilityDateInput.value;
+                    const allDay = document.querySelector('input[name="availability-type"]:checked').value === 'all-day';
+                    let timeRange = null;
+                    
+                    if (!allDay) {
+                        const startTime = timeStartInput.value;
+                        const endTime = timeEndInput.value;
+                        
+                        if (!startTime || !endTime) {
+                            showToast('Please select both start and end times');
+                            return;
+                        }
+                        
+                        timeRange = `${startTime}-${endTime}`;
+                    }
+                    
+                    let repeatPattern = null;
+                    let repeatUntil = null;
+                    
+                    if (repeatCheckbox.checked) {
+                        repeatPattern = document.getElementById('repeat-pattern').value;
+                        repeatUntil = repeatUntilInput.value;
+                        
+                        if (!repeatUntil) {
+                            showToast('Please select a repeat end date');
+                            return;
+                        }
+                    }
+                    
+                    // Create unavailability data object
+                    const unavailabilityItem = {
+                        date: date,
+                        all_day: allDay,
+                        time_range: timeRange,
+                        repeat_pattern: repeatPattern,
+                        repeat_until: repeatUntil
+                    };
+                    
+                    // Send data to server
+                    saveUnavailability(unavailabilityItem);
+                });
+            }
+            
+            // Function to save unavailability data
+            function saveUnavailability(data) {
+                fetch('/api/unavailability', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Close the modal
+                    unavailabilityModal.style.display = 'none';
+                    
+                    // Show success message
+                    showToast('Unavailability saved successfully');
+                    
+                    // Reload unavailability data
+                    loadUnavailabilityData();
+                })
+                .catch(error => {
+                    console.error('Error saving unavailability:', error);
+                    showToast('Error saving unavailability');
+                });
+            }
+            
+            // Function to load unavailability data
+            function loadUnavailabilityData() {
+                fetch('/api/unavailability')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    unavailabilityData = data;
+                    renderUnavailabilityList();
+                })
+                .catch(error => {
+                    console.error('Error loading unavailability data:', error);
+                });
+            }
+            
+            // Function to render unavailability list
+            function renderUnavailabilityList() {
+                if (!unavailabilityList) return;
+                
+                // Clear the list
+                unavailabilityList.innerHTML = '';
+                
+                if (unavailabilityData.length === 0) {
+                    // Show no unavailability message
+                    unavailabilityList.appendChild(noUnavailabilityMessage);
+                    return;
+                }
+                
+                // Hide no unavailability message
+                noUnavailabilityMessage.style.display = 'none';
+                
+                // Add each unavailability item to the list
+                unavailabilityData.forEach(item => {
+                    const itemEl = document.createElement('div');
+                    itemEl.className = 'assignment-item';
+                    itemEl.style.padding = '15px';
+                    itemEl.style.marginBottom = '10px';
+                    
+                    // Format date
+                    const date = new Date(item.date);
+                    const formattedDate = date.toLocaleDateString('en-US', {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric'
+                    });
+                    
+                    // Create content
+                    let content = `
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                            <strong>${formattedDate}</strong>
+                            <button class="delete-unavailability" data-id="${item.id}" style="background: none; border: none; color: #dc3545; cursor: pointer;">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                        <div>${item.all_day ? 'All Day' : `Time: ${item.time_range}`}</div>
+                    `;
+                    
+                    if (item.repeat_pattern) {
+                        content += `
+                            <div style="margin-top: 5px;">
+                                <span class="badge" style="background-color: rgba(37, 117, 252, 0.2); color: #2575fc;">
+                                    Repeats: Every ${item.repeat_pattern}
+                                </span>
+                            </div>
+                        `;
+                    }
+                    
+                    itemEl.innerHTML = content;
+                    unavailabilityList.appendChild(itemEl);
+                    
+                    // Add delete event listener
+                    const deleteBtn = itemEl.querySelector('.delete-unavailability');
+                    if (deleteBtn) {
+                        deleteBtn.addEventListener('click', function() {
+                            const id = this.getAttribute('data-id');
+                            deleteUnavailability(id);
+                        });
+                    }
+                });
+            }
+            
+            // Function to delete unavailability
+            function deleteUnavailability(id) {
+                fetch(`/api/unavailability/${id}`, {
+                    method: 'DELETE'
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    showToast('Unavailability deleted successfully');
+                    loadUnavailabilityData();
+                })
+                .catch(error => {
+                    console.error('Error deleting unavailability:', error);
+                    showToast('Error deleting unavailability');
+                });
+            }
+            
+            // Helper function to format date for server
+            function formatDateForServer(date) {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
             }
         });
     </script>
