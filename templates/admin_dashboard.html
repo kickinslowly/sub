@@ -468,6 +468,19 @@
                             </a>
                         </div>
                     </div>
+                    
+                    <!-- School Management Card (Only visible to Tech Coordinators) -->
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-header">
+                            <h2><i class="fas fa-school"></i> School Management</h2>
+                        </div>
+                        <div class="card-body">
+                            <p class="card-text">Add and manage schools in the system.</p>
+                            <a href="/manage_schools" class="btn btn-primary w-100">
+                                <i class="fas fa-building"></i> Manage Schools
+                            </a>
+                        </div>
+                    </div>
                     {% endif %}
                     
                     <!-- Create Request Card -->
@@ -501,7 +514,7 @@
                                     <label for="search_keyword" class="form-label fw-medium">Keyword:</label>
                                     <div class="input-group">
                                         <span class="input-group-text"><i class="fas fa-search"></i></span>
-                                        <input type="text" id="search_keyword" name="search_keyword" class="form-control" 
+                                        <input type="text" id="search_keyword" name="search_keyword" class="form-control shadow-sm border-primary rounded" style="border: 1px solid rgba(37, 117, 252, 0.5);" 
                                                placeholder="Teacher or substitute name" value="{{ request.args.get('search_keyword', '') }}">
                                     </div>
                                 </div>
@@ -509,7 +522,7 @@
                                     <label for="search_date" class="form-label fw-medium">Date:</label>
                                     <div class="input-group">
                                         <span class="input-group-text"><i class="fas fa-calendar"></i></span>
-                                        <input type="date" id="search_date" name="search_date" class="form-control"
+                                        <input type="date" id="search_date" name="search_date" class="form-control shadow-sm border-primary rounded" style="border: 1px solid rgba(37, 117, 252, 0.5);"
                                                value="{{ request.args.get('search_date', '') }}">
                                     </div>
                                 </div>
@@ -517,7 +530,7 @@
                                     <label for="search_status" class="form-label fw-medium">Status:</label>
                                     <div class="input-group">
                                         <span class="input-group-text"><i class="fas fa-filter"></i></span>
-                                        <select id="search_status" name="search_status" class="form-select">
+                                        <select id="search_status" name="search_status" class="form-select shadow-sm border-primary rounded" style="border: 1px solid rgba(37, 117, 252, 0.5);">
                                             <option value="">All</option>
                                             <option value="Open" {% if request.args.get('search_status') == 'Open' %}selected{% endif %}>Open</option>
                                             <option value="Filled" {% if request.args.get('search_status') == 'Filled' %}selected{% endif %}>Filled</option>
@@ -526,7 +539,7 @@
                                 </div>
                                 <div class="col-md-6 mb-3">
                                     <label class="form-label invisible">Actions</label>
-                                    <div class="d-flex justify-content-start align-items-center w-100">
+                                    <div class="d-flex justify-content-start align-items-center w-100 p-2">
                                         <button type="submit" class="btn btn-primary me-2 px-4">
                                             <i class="fas fa-search me-1"></i> Search
                                         </button>
@@ -585,6 +598,9 @@
                                                         {{ teacher.name }}
                                                     {% endfor %}
                                                 </p>
+                                                {% if request.school %}
+                                                <p class="mb-1"><strong><i class="bi bi-building me-1"></i> School:</strong> {{ request.school.name }}</p>
+                                                {% endif %}
                                                 <p class="mb-1"><strong><i class="bi bi-clock me-1"></i> Time:</strong> {{ request.time }}</p>
                                                 {% if request.grade %}
                                                 <p class="mb-1"><strong><i class="bi bi-mortarboard me-1"></i> Grade:</strong> {{ request.grade.name }}</p>
@@ -644,6 +660,9 @@
                                                         {{ teacher.name }}
                                                     {% endfor %}
                                                 </p>
+                                                {% if request.school %}
+                                                <p class="mb-1"><strong><i class="bi bi-building me-1"></i> School:</strong> {{ request.school.name }}</p>
+                                                {% endif %}
                                                 <p class="mb-1"><strong><i class="bi bi-clock me-1"></i> Time:</strong> {{ request.time }}</p>
                                                 {% if request.grade %}
                                                 <p class="mb-1"><strong><i class="bi bi-mortarboard me-1"></i> Grade:</strong> {{ request.grade.name }}</p>
@@ -733,7 +752,7 @@
             // Initialize search date picker if it exists
             if (document.getElementById('search_date')) {
                 flatpickr("#search_date", {
-                    dateFormat: "Y-m-d"
+                    dateFormat: "m/d/Y"
                 });
             }
         });
@@ -756,7 +775,7 @@
 
             // Initialize date picker
             flatpickr("#date", {
-                dateFormat: "Y-m-d",
+                dateFormat: "m/d/Y",
                 minDate: "today"
             });
 

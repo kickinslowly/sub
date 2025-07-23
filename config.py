@@ -31,7 +31,7 @@ class Config:
     # Twilio configuration
     TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID', 'AC1915744a1295f8c15ab863e13705d1dd')
     TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN', 'dbefb371115d778f14e2bee6f483883d')
-    TWILIO_PHONE_NUMBER = os.environ.get('TWILIO_PHONE_NUMBER', '18333624757')
+    TWILIO_PHONE_NUMBER = os.environ.get('TWILIO_PHONE_NUMBER', '17073534507')
 
     # Admin phone numbers as a comma-separated list in environment variable
     ADMIN_PHONE_NUMBERS = os.environ.get('ADMIN_PHONE_NUMBERS', '7074954246').split(',')

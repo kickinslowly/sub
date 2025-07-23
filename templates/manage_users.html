@@ -263,8 +263,7 @@
                                                     name="grades" 
                                                     value="{{ grade.id }}" 
                                                     id="grade-{{ grade.id }}"
-                                                    v-model="formData.grades"
-                                                    :value="{{ grade.id }}">
+                                                    v-model="formData.grades">
                                                 <label class="form-check-label" for="grade-{{ grade.id }}">
                                                     {{ grade.name }}
                                                 </label>
@@ -293,8 +292,7 @@
                                                     name="subjects" 
                                                     value="{{ subject.id }}" 
                                                     id="subject-{{ subject.id }}"
-                                                    v-model="formData.subjects"
-                                                    :value="{{ subject.id }}">
+                                                    v-model="formData.subjects">
                                                 <label class="form-check-label" for="subject-{{ subject.id }}">
                                                     {{ subject.name }}
                                                 </label>
@@ -326,6 +324,38 @@
                                 <div class="form-text" v-if="!errors.phone && formData.phone">
                                     Format: (123) 456-7890
                                 </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Schools:</label>
+                                <div class="checkbox-group">
+                                    <div class="row row-cols-2 g-2">
+                                        {% for school in schools %}
+                                        <div class="col">
+                                            <div class="form-check">
+                                                <input 
+                                                    class="form-check-input" 
+                                                    type="checkbox" 
+                                                    name="schools" 
+                                                    value="{{ school.id }}" 
+                                                    id="school-{{ school.id }}"
+                                                    v-model="formData.schools">
+                                                <label class="form-check-label" for="school-{{ school.id }}">
+                                                    {{ school.name }}
+                                                </label>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                <div class="form-text mt-1">
+                                    <span v-if="formData.schools.length > 0">
+                                        Selected: {{ formData.schools.length }} school(s)
+                                    </span>
+                                </div>
+                                
+                                <!-- Hidden field for backward compatibility -->
+                                <input type="hidden" name="school_id" v-model="formData.school_id">
                             </div>
 
                             <div class="modal-footer px-0 pb-0">
@@ -420,8 +450,7 @@
                                                     name="grades" 
                                                     value="{{ grade.id }}" 
                                                     id="edit-grade-{{ grade.id }}"
-                                                    v-model="formData.grades"
-                                                    :value="{{ grade.id }}">
+                                                    v-model="formData.grades">
                                                 <label class="form-check-label" for="edit-grade-{{ grade.id }}">
                                                     {{ grade.name }}
                                                 </label>
@@ -450,8 +479,7 @@
                                                     name="subjects" 
                                                     value="{{ subject.id }}" 
                                                     id="edit-subject-{{ subject.id }}"
-                                                    v-model="formData.subjects"
-                                                    :value="{{ subject.id }}">
+                                                    v-model="formData.subjects">
                                                 <label class="form-check-label" for="edit-subject-{{ subject.id }}">
                                                     {{ subject.name }}
                                                 </label>
@@ -483,6 +511,38 @@
                                 <div class="form-text" v-if="!errors.phone && formData.phone">
                                     Format: (123) 456-7890
                                 </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Schools:</label>
+                                <div class="checkbox-group">
+                                    <div class="row row-cols-2 g-2">
+                                        {% for school in schools %}
+                                        <div class="col">
+                                            <div class="form-check">
+                                                <input 
+                                                    class="form-check-input" 
+                                                    type="checkbox" 
+                                                    name="schools" 
+                                                    value="{{ school.id }}" 
+                                                    id="edit-school-{{ school.id }}"
+                                                    v-model="formData.schools">
+                                                <label class="form-check-label" for="edit-school-{{ school.id }}">
+                                                    {{ school.name }}
+                                                </label>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                <div class="form-text mt-1">
+                                    <span v-if="formData.schools.length > 0">
+                                        Selected: {{ formData.schools.length }} school(s)
+                                    </span>
+                                </div>
+                                
+                                <!-- Hidden field for backward compatibility -->
+                                <input type="hidden" name="school_id" v-model="formData.school_id">
                             </div>
 
                             <!-- Hidden input to store user_id -->
@@ -618,8 +678,11 @@
                                             data-user-email="{{ teacher.email }}"
                                             data-user-role="{{ teacher.role }}"
                                             data-user-phone="{{ teacher.phone }}"
+                                            data-user-campus="{{ teacher.campus }}"
+                                            data-user-school-id="{{ teacher.school_id }}"
                                             data-user-grades="{{ teacher.grades|map(attribute='id')|list|tojson }}"
-                                            data-user-subjects="{{ teacher.subjects|map(attribute='id')|list|tojson }}">
+                                            data-user-subjects="{{ teacher.subjects|map(attribute='id')|list|tojson }}"
+                                            data-user-schools="{{ teacher.schools|map(attribute='id')|list|tojson }}">
                                         <i class="bi bi-pencil-square me-1"></i>Edit
                                     </button>
                                     {% if user['role'] == 'admin_l1' or user['role'] == 'admin_l2' %}
@@ -722,8 +785,11 @@
                                             data-user-email="{{ substitute.email }}"
                                             data-user-role="{{ substitute.role }}"
                                             data-user-phone="{{ substitute.phone }}"
+                                            data-user-campus="{{ substitute.campus }}"
+                                            data-user-school-id="{{ substitute.school_id }}"
                                             data-user-grades="{{ substitute.grades|map(attribute='id')|list|tojson }}"
-                                            data-user-subjects="{{ substitute.subjects|map(attribute='id')|list|tojson }}">
+                                            data-user-subjects="{{ substitute.subjects|map(attribute='id')|list|tojson }}"
+                                            data-user-schools="{{ substitute.schools|map(attribute='id')|list|tojson }}">
                                         <i class="bi bi-pencil-square me-1"></i>Edit
                                     </button>
                                     {% if user['role'] == 'admin_l1' or user['role'] == 'admin_l2' %}
@@ -760,7 +826,10 @@
                         role: 'teacher',
                         grades: [],
                         subjects: [],
-                        phone: ''
+                        schools: [],
+                        phone: '',
+                        campus: '',
+                        school_id: ''
                     },
                     errors: {
                         name: '',
@@ -823,7 +892,10 @@
                         role: 'teacher',
                         grades: [],
                         subjects: [],
-                        phone: ''
+                        schools: [],
+                        phone: '',
+                        campus: '',
+                        school_id: ''
                     };
                     this.errors = {
                         name: '',
@@ -861,7 +933,10 @@
                         role: 'teacher',
                         grades: [],
                         subjects: [],
-                        phone: ''
+                        schools: [],
+                        phone: '',
+                        campus: '',
+                        school_id: ''
                     },
                     errors: {
                         name: '',
@@ -926,7 +1001,10 @@
                         role: 'teacher',
                         grades: [],
                         subjects: [],
-                        phone: ''
+                        schools: [],
+                        phone: '',
+                        campus: '',
+                        school_id: ''
                     };
                     this.errors = {
                         name: '',
@@ -942,8 +1020,11 @@
                     this.formData.email = userData.email;
                     this.formData.role = userData.role;
                     this.formData.phone = userData.phone || '';
+                    this.formData.campus = userData.campus || '';
+                    this.formData.school_id = userData.school_id || '';
                     this.formData.grades = userData.grades || [];
                     this.formData.subjects = userData.subjects || [];
+                    this.formData.schools = userData.schools || [];
                     this.formAction = `/edit_user/${userData.userId}`;
                 },
                 submitForm() {
@@ -989,17 +1070,28 @@
                     const userEmail = button.dataset.userEmail;
                     const userRole = button.dataset.userRole;
                     const userPhone = button.dataset.userPhone;
+                    const userCampus = button.dataset.userCampus;
+                    const userSchoolId = button.dataset.userSchoolId;
 
-                    // Get the user's grades and subjects from data attributes
+                    // Get the user's grades, subjects, and schools from data attributes
                     let userGrades = [];
                     let userSubjects = [];
+                    let userSchools = [];
 
                     try {
                         // Parse the JSON data from the data attributes
                         userGrades = JSON.parse(button.dataset.userGrades || '[]');
                         userSubjects = JSON.parse(button.dataset.userSubjects || '[]');
+                        
+                        // For backward compatibility, if schools data attribute exists, use it
+                        // otherwise create a single-item array with the school_id if it exists
+                        if (button.dataset.userSchools) {
+                            userSchools = JSON.parse(button.dataset.userSchools || '[]');
+                        } else if (button.dataset.userSchoolId) {
+                            userSchools = [parseInt(button.dataset.userSchoolId)];
+                        }
                     } catch (e) {
-                        console.error('Error parsing grades or subjects:', e);
+                        console.error('Error parsing grades, subjects, or schools:', e);
                     }
 
                     // Set the user data in the Vue app
@@ -1009,8 +1101,11 @@
                         email: userEmail,
                         role: userRole,
                         phone: userPhone || '',
+                        campus: userCampus || '',
+                        school_id: userSchoolId || '',
                         grades: userGrades,
-                        subjects: userSubjects
+                        subjects: userSubjects,
+                        schools: userSchools
                     });
 
                     // Show the modal

@@ -109,6 +109,15 @@
                                 <input type="tel" id="phone" name="phone" class="form-control" placeholder="e.g., 1234567890">
                             </div>
                             <div class="mb-3">
+                                <label for="school_id" class="form-label">School:</label>
+                                <select id="school_id" name="school_id" class="form-select">
+                                    <option value="">Select a school</option>
+                                    {% for school in schools %}
+                                    <option value="{{ school.id }}">{{ school.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="mb-3">
                                 <label for="admin_type" class="form-label">Admin Type:</label>
                                 <select id="admin_type" name="admin_type" class="form-select">
                                     <option value="front_office">Front Office</option>
@@ -154,7 +163,8 @@
                                                                 data-user-name="{{ admin.name }}"
                                                                 data-user-email="{{ admin.email }}"
                                                                 data-user-role="{{ admin.role }}"
-                                                                data-user-phone="{{ admin.phone }}">
+                                                                data-user-phone="{{ admin.phone }}"
+                                                                data-user-school-id="{{ admin.school_id }}">
                                                             <i class="bi bi-pencil-square me-1"></i>Edit
                                                         </button>
                                                         <button class="btn btn-sm btn-outline-danger delete-btn" 
@@ -203,6 +213,15 @@
                         <div class="mb-3">
                             <label for="edit-phone" class="form-label">Phone Number (optional):</label>
                             <input type="tel" class="form-control" id="edit-phone" name="phone" placeholder="e.g., 1234567890">
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit-school_id" class="form-label">School:</label>
+                            <select id="edit-school_id" name="school_id" class="form-select">
+                                <option value="">Select a school</option>
+                                {% for school in schools %}
+                                <option value="{{ school.id }}">{{ school.name }}</option>
+                                {% endfor %}
+                            </select>
                         </div>
                         <!-- Hidden input for role -->
                         <input type="hidden" id="edit-role" name="role" value="admin_l2">
@@ -261,6 +280,7 @@
             const editName = document.getElementById('edit-name');
             const editEmail = document.getElementById('edit-email');
             const editPhone = document.getElementById('edit-phone');
+            const editSchoolId = document.getElementById('edit-school_id');
             const editUserId = document.getElementById('edit-user-id');
 
             editButtons.forEach(button => {
@@ -269,11 +289,13 @@
                     const userName = button.dataset.userName;
                     const userEmail = button.dataset.userEmail;
                     const userPhone = button.dataset.userPhone || '';
+                    const userSchoolId = button.dataset.userSchoolId || '';
 
                     // Set form values
                     editName.value = userName;
                     editEmail.value = userEmail;
                     editPhone.value = userPhone;
+                    editSchoolId.value = userSchoolId;
                     editUserId.value = userId;
 
                     // Set form action

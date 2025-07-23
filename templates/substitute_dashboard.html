@@ -530,6 +530,22 @@
                                     <span class="assignment-detail-label">Teacher</span>
                                     <span class="assignment-detail-value">{{ teacher_name }}</span>
                                 </div>
+                                {% if request.school %}
+                                <div class="assignment-detail">
+                                    <span class="assignment-detail-label">School</span>
+                                    <span class="assignment-detail-value">{{ request.school.name }}</span>
+                                </div>
+                                {% elif teacher.school %}
+                                <div class="assignment-detail">
+                                    <span class="assignment-detail-label">School</span>
+                                    <span class="assignment-detail-value">{{ teacher.school.name }}</span>
+                                </div>
+                                {% elif teacher.campus %}
+                                <div class="assignment-detail">
+                                    <span class="assignment-detail-label">Campus</span>
+                                    <span class="assignment-detail-value">{{ teacher.campus }}</span>
+                                </div>
+                                {% endif %}
                                 <div class="assignment-detail">
                                     <span class="assignment-detail-label">Time</span>
                                     <span class="assignment-detail-value">{{ request.time }}</span>
@@ -591,6 +607,12 @@
                                     <span class="assignment-detail-label">Teacher</span>
                                     <span class="assignment-detail-value">{{ teacher_name }}</span>
                                 </div>
+                                {% if request.school %}
+                                <div class="assignment-detail">
+                                    <span class="assignment-detail-label">School</span>
+                                    <span class="assignment-detail-value">{{ request.school.name }}</span>
+                                </div>
+                                {% endif %}
                                 <div class="assignment-detail">
                                     <span class="assignment-detail-label">Time</span>
                                     <span class="assignment-detail-value">{{ request.time }}</span>

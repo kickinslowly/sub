@@ -2,7 +2,7 @@ from flask import Flask, redirect, url_for, session, render_template, request, f
 from authlib.integrations.flask_client import OAuth
 from config import Config
 from datetime import datetime, timedelta
-from models import User, SubstituteRequest, Grade, Subject, user_grades, user_subjects # Import models
+from models import User, SubstituteRequest, Grade, Subject, School, user_grades, user_subjects # Import models
 from sqlalchemy.orm import aliased
 import uuid
 import sqlite3
@@ -101,7 +101,7 @@ def seed_database():
 
 # Function to check and add missing columns
 def update_database_schema():
-    """Check if required columns exist in substitute_request table and add them if not."""
+    """Check if required columns exist in tables and handle schema migrations."""
     try:
         # Get the database path from the app config
         db_uri = app.config['SQLALCHEMY_DATABASE_URI']
@@ -133,83 +133,210 @@ def update_database_schema():
         if cursor.fetchone() is None:
             # Table doesn't exist yet, it will be created by db.create_all()
             print("substitute_request table doesn't exist yet, it will be created by db.create_all()")
-            conn.close()
-            return
+        else:
+            # Check which columns exist in the substitute_request table
+            cursor.execute("PRAGMA table_info(substitute_request)")
+            columns_info = cursor.fetchall()
+            columns = [column[1] for column in columns_info]
+            print(f"Existing columns in substitute_request: {columns}")
 
-        # Check which columns exist in the substitute_request table
-        cursor.execute("PRAGMA table_info(substitute_request)")
+            # Check if all required columns exist
+            required_columns = ['id', 'teacher_id', 'date', 'time', 'details', 'reason', 'status', 'substitute_id', 'token', 'created_at', 'grade_id', 'subject_id']
+            missing_columns = [col for col in required_columns if col not in columns]
+
+            if missing_columns:
+                print(f"Missing columns in substitute_request table: {missing_columns}")
+
+                # If 'reason' column is missing, try to add it
+                if 'reason' in missing_columns:
+                    try:
+                        print("Adding reason column...")
+                        cursor.execute("ALTER TABLE substitute_request ADD COLUMN reason VARCHAR(20)")
+                        conn.commit()
+                        print("Added reason column to substitute_request table")
+                        missing_columns.remove('reason')
+                    except sqlite3.OperationalError as e:
+                        print(f"Error adding reason column: {e}")
+
+                # If 'created_at' column is missing, try to add it
+                if 'created_at' in missing_columns:
+                    try:
+                        print("Adding created_at column...")
+                        cursor.execute("ALTER TABLE substitute_request ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+                        current_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+                        cursor.execute(f"UPDATE substitute_request SET created_at = '{current_time}'")
+                        conn.commit()
+                        print("Added created_at column to substitute_request table")
+                        missing_columns.remove('created_at')
+                    except sqlite3.OperationalError as e:
+                        print(f"Error adding created_at column: {e}")
+
+                # If 'grade_id' column is missing, try to add it
+                if 'grade_id' in missing_columns:
+                    try:
+                        print("Adding grade_id column...")
+                        cursor.execute("ALTER TABLE substitute_request ADD COLUMN grade_id INTEGER")
+                        conn.commit()
+                        print("Added grade_id column to substitute_request table")
+                        missing_columns.remove('grade_id')
+                    except sqlite3.OperationalError as e:
+                        print(f"Error adding grade_id column: {e}")
+
+                # If 'subject_id' column is missing, try to add it
+                if 'subject_id' in missing_columns:
+                    try:
+                        print("Adding subject_id column...")
+                        cursor.execute("ALTER TABLE substitute_request ADD COLUMN subject_id INTEGER")
+                        conn.commit()
+                        print("Added subject_id column to substitute_request table")
+                        missing_columns.remove('subject_id')
+                    except sqlite3.OperationalError as e:
+                        print(f"Error adding subject_id column: {e}")
+
+                # If there are still missing columns that couldn't be added, drop and recreate the table
+                if missing_columns:
+                    print(f"Still missing columns: {missing_columns}. Will drop and recreate the table.")
+
+                    # Backup existing data
+                    cursor.execute("CREATE TABLE IF NOT EXISTS substitute_request_backup AS SELECT * FROM substitute_request")
+
+                    # Drop the table
+                    cursor.execute("DROP TABLE substitute_request")
+
+                    conn.commit()
+                    print("Dropped substitute_request table. It will be recreated by db.create_all()")
+            else:
+                print("All required columns exist in substitute_request table")
+
+        # Check if the school table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='school'")
+        if cursor.fetchone() is None:
+            # Table doesn't exist yet, it will be created by db.create_all()
+            print("school table doesn't exist yet, it will be created by db.create_all()")
+        else:
+            # Check which columns exist in the school table
+            cursor.execute("PRAGMA table_info(school)")
+            columns_info = cursor.fetchall()
+            columns = [column[1] for column in columns_info]
+            print(f"Existing columns in school: {columns}")
+
+            # Check if all required columns exist
+            required_columns = ['id', 'name', 'code', 'level1_admin_id']
+            missing_columns = [col for col in required_columns if col not in columns]
+
+            if missing_columns:
+                print(f"Missing columns in school table: {missing_columns}")
+
+                # If 'level1_admin_id' column is missing, try to add it
+                if 'level1_admin_id' in missing_columns:
+                    try:
+                        print("Adding level1_admin_id column...")
+                        cursor.execute("ALTER TABLE school ADD COLUMN level1_admin_id INTEGER")
+                        conn.commit()
+                        print("Added level1_admin_id column to school table")
+                        missing_columns.remove('level1_admin_id')
+                    except sqlite3.OperationalError as e:
+                        print(f"Error adding level1_admin_id column: {e}")
+
+                # If there are still missing columns that couldn't be added, drop and recreate the table
+                if missing_columns:
+                    print(f"Still missing columns: {missing_columns}. Will drop and recreate the table.")
+
+                    # Backup existing data
+                    cursor.execute("CREATE TABLE IF NOT EXISTS school_backup AS SELECT * FROM school")
+
+                    # Drop the table
+                    cursor.execute("DROP TABLE school")
+
+                    conn.commit()
+                    print("Dropped school table. It will be recreated by db.create_all()")
+            else:
+                print("All required columns exist in school table")
+
+        # SCHEMA MIGRATION: Handle the transition from campus field to school_id
+        
+        # First, ensure all tables exist by calling db.create_all()
+        conn.close()
+        with app.app_context():
+            db.create_all()
+        
+        # Reconnect to the database
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Check if the user table has the campus column
+        cursor.execute("PRAGMA table_info(user)")
         columns_info = cursor.fetchall()
         columns = [column[1] for column in columns_info]
-        print(f"Existing columns in substitute_request: {columns}")
-
-        # Check if all required columns exist
-        required_columns = ['id', 'teacher_id', 'date', 'time', 'details', 'reason', 'status', 'substitute_id', 'token', 'created_at', 'grade_id', 'subject_id']
-        missing_columns = [col for col in required_columns if col not in columns]
-
-        if missing_columns:
-            print(f"Missing columns in substitute_request table: {missing_columns}")
-
-            # If 'reason' column is missing, try to add it
-            if 'reason' in missing_columns:
+        
+        if 'campus' in columns:
+            print("Found campus column in user table")
+            
+            # Check if the user table has the school_id column
+            if 'school_id' not in columns:
                 try:
-                    print("Adding reason column...")
-                    cursor.execute("ALTER TABLE substitute_request ADD COLUMN reason VARCHAR(20)")
+                    print("Adding school_id column to user table...")
+                    cursor.execute("ALTER TABLE user ADD COLUMN school_id INTEGER")
                     conn.commit()
-                    print("Added reason column to substitute_request table")
-                    missing_columns.remove('reason')
+                    print("Added school_id column to user table")
                 except sqlite3.OperationalError as e:
-                    print(f"Error adding reason column: {e}")
-
-            # If 'created_at' column is missing, try to add it
-            if 'created_at' in missing_columns:
-                try:
-                    print("Adding created_at column...")
-                    cursor.execute("ALTER TABLE substitute_request ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-                    current_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-                    cursor.execute(f"UPDATE substitute_request SET created_at = '{current_time}'")
-                    conn.commit()
-                    print("Added created_at column to substitute_request table")
-                    missing_columns.remove('created_at')
-                except sqlite3.OperationalError as e:
-                    print(f"Error adding created_at column: {e}")
-
-            # If 'grade_id' column is missing, try to add it
-            if 'grade_id' in missing_columns:
-                try:
-                    print("Adding grade_id column...")
-                    cursor.execute("ALTER TABLE substitute_request ADD COLUMN grade_id INTEGER")
-                    conn.commit()
-                    print("Added grade_id column to substitute_request table")
-                    missing_columns.remove('grade_id')
-                except sqlite3.OperationalError as e:
-                    print(f"Error adding grade_id column: {e}")
-
-            # If 'subject_id' column is missing, try to add it
-            if 'subject_id' in missing_columns:
-                try:
-                    print("Adding subject_id column...")
-                    cursor.execute("ALTER TABLE substitute_request ADD COLUMN subject_id INTEGER")
-                    conn.commit()
-                    print("Added subject_id column to substitute_request table")
-                    missing_columns.remove('subject_id')
-                except sqlite3.OperationalError as e:
-                    print(f"Error adding subject_id column: {e}")
-
-            # If there are still missing columns that couldn't be added, drop and recreate the table
-            if missing_columns:
-                print(f"Still missing columns: {missing_columns}. Will drop and recreate the table.")
-
-                # Backup existing data
-                cursor.execute("CREATE TABLE IF NOT EXISTS substitute_request_backup AS SELECT * FROM substitute_request")
-
-                # Drop the table
-                cursor.execute("DROP TABLE substitute_request")
-
-                conn.commit()
-                print("Dropped substitute_request table. It will be recreated by db.create_all()")
+                    print(f"Error adding school_id column: {e}")
+                    conn.close()
+                    return
+            
+            # Get all unique campus values from the user table
+            cursor.execute("SELECT DISTINCT campus FROM user WHERE campus IS NOT NULL AND campus != ''")
+            unique_campuses = cursor.fetchall()
+            
+            if unique_campuses:
+                print(f"Found {len(unique_campuses)} unique campus values")
+                
+                # Create a mapping of campus codes to school names
+                campus_to_name = {
+                    'AUES': 'AUES Elementary School',
+                    'PAHS': 'PAHS High School',
+                    'SCHS': 'SCHS High School',
+                    'PCC': 'PCC School',
+                    'MAINTENANCE': 'Maintenance Department',
+                    'CAFETERIA': 'Cafeteria Department',
+                    'TRANSPORTATION': 'Transportation Department',
+                    'DO': 'District Office'
+                }
+                
+                # Process each unique campus
+                for (campus,) in unique_campuses:
+                    if campus:
+                        campus_code = campus.strip().upper()
+                        school_name = campus_to_name.get(campus_code, f"{campus_code} School")
+                        
+                        # Check if this school already exists in the database
+                        cursor.execute("SELECT id FROM school WHERE code = ?", (campus_code,))
+                        existing_school = cursor.fetchone()
+                        
+                        if existing_school:
+                            school_id = existing_school[0]
+                            print(f"School {campus_code} already exists with ID {school_id}")
+                        else:
+                            # Insert the new school
+                            cursor.execute("INSERT INTO school (name, code) VALUES (?, ?)", (school_name, campus_code))
+                            conn.commit()
+                            
+                            # Get the ID of the newly inserted school
+                            cursor.execute("SELECT id FROM school WHERE code = ?", (campus_code,))
+                            school_id = cursor.fetchone()[0]
+                            print(f"Created new school {campus_code} with ID {school_id}")
+                        
+                        # Update users with this campus to use the new school_id
+                        cursor.execute("UPDATE user SET school_id = ? WHERE campus = ?", (school_id, campus))
+                        conn.commit()
+                        print(f"Updated users with campus {campus} to use school_id {school_id}")
+                
+                print("Migration from campus to school_id completed successfully")
+            else:
+                print("No unique campus values found, no migration needed")
         else:
-            print("All required columns exist in substitute_request table")
-
+            print("Campus column not found in user table, no migration needed")
+        
         conn.close()
     except Exception as e:
         print(f"Error updating database schema: {e}")
@@ -458,8 +585,20 @@ def substitute_dashboard():
         if ALL_SUBJECT_ID in sub_subject_ids or (sub_subject_ids and teacher_subject_ids and sub_subject_ids.intersection(teacher_subject_ids)):
             subject_match = True
 
-        # If both grade and subject match, add to matching requests
-        if grade_match and subject_match:
+        # Check for school match
+        school_match = False
+        # If substitute doesn't have a school_id assigned, show all schools
+        if logged_in_user.school_id is None:
+            school_match = True
+        # If request doesn't have a school_id assigned, show to all substitutes
+        elif request.school_id is None:
+            school_match = True
+        # If request has a school_id and it matches the substitute's school_id
+        elif request.school_id == logged_in_user.school_id:
+            school_match = True
+            
+        # If grade, subject, and school match, add to matching requests
+        if grade_match and subject_match and school_match:
             matching_requests.append((request, teacher_name, teacher))
 
     return render_template('substitute_dashboard.html', 
@@ -489,17 +628,39 @@ def edit_profile(user_id):
         flash('This feature is only available for teachers, substitutes, and level 2 admins.')
         return redirect(url_for('dashboard'))
 
-    # Fetch all grades and subjects for the form
+    # Fetch all grades, subjects, and schools for the form
     grades = Grade.query.order_by(Grade.id.asc()).all()
     subjects = Subject.query.order_by(Subject.id.asc()).all()
+    schools = School.query.order_by(School.name.asc()).all()
 
     if request.method == 'POST':
         # Update user details
         user_to_edit.name = request.form['name']
         user_to_edit.email = request.form['email']
         user_to_edit.phone = request.form.get('phone', None)
+        
+        # Handle school_id and campus
+        school_id = request.form.get('school_id')
+        campus = request.form.get('campus', None)
+        
+        # Get multiple schools
+        school_ids = request.form.getlist('schools')  # List of selected school IDs
+        school_objs = School.query.filter(School.id.in_(school_ids)).all()
+        
+        # For backward compatibility, set school_id to the first selected school or keep existing
+        if school_objs and not school_id:
+            school_id = school_objs[0].id
+        # If school_id is not provided but campus is, look up the school by campus code
+        elif not school_id and campus:
+            school = School.query.filter_by(code=campus.strip().upper()).first()
+            if school:
+                school_id = school.id
+        
+        # Update both fields for backward compatibility
+        user_to_edit.campus = campus
+        user_to_edit.school_id = school_id
 
-        # Update grades and subjects
+        # Update grades, subjects, and schools
         grade_ids = request.form.getlist('grades')  # List of selected grade IDs
         subject_ids = request.form.getlist('subjects')  # List of selected subject IDs
         grade_objs = Grade.query.filter(Grade.id.in_(grade_ids)).all()
@@ -507,12 +668,13 @@ def edit_profile(user_id):
 
         user_to_edit.grades = grade_objs
         user_to_edit.subjects = subject_objs
+        user_to_edit.schools = school_objs  # Update schools relationship
 
         # Save changes to the database
         db.session.commit()
 
         flash('Profile has been updated successfully!')
-        
+
         # Redirect based on user role and who is being edited
         if logged_in_user.role == 'admin_l2' and logged_in_user.id != user_to_edit.id:
             return redirect(url_for('user_profile', user_id=user_id))
@@ -521,7 +683,7 @@ def edit_profile(user_id):
         else:
             return redirect(url_for('dashboard'))
 
-    return render_template('edit_profile.html', user=user_to_edit, grades=grades, subjects=subjects)
+    return render_template('edit_profile.html', user=user_to_edit, grades=grades, subjects=subjects, schools=schools)
 
 
 @app.route('/dashboard')
@@ -536,7 +698,12 @@ def dashboard():
         .order_by(SubstituteRequest.date.desc())
         .all()
     )
-    return render_template('dashboard.html', user=logged_in_user, past_bookings=past_bookings)
+    
+    # Calculate total hours out
+    from helpers import calculate_total_hours_out
+    total_hours_out = calculate_total_hours_out(past_bookings)
+    
+    return render_template('dashboard.html', user=logged_in_user, past_bookings=past_bookings, total_hours_out=total_hours_out)
 
 
 @app.route('/api/teacher_bookings')
@@ -548,6 +715,10 @@ def api_teacher_bookings():
 
     # Get all bookings for the teacher
     bookings = SubstituteRequest.query.filter_by(teacher_id=logged_in_user.id).order_by(SubstituteRequest.date.desc()).all()
+
+    # Calculate total hours out
+    from helpers import calculate_total_hours_out
+    total_hours_out = calculate_total_hours_out(bookings)
 
     # Convert bookings to JSON-serializable format
     bookings_data = []
@@ -572,7 +743,7 @@ def api_teacher_bookings():
 
         bookings_data.append(booking_data)
 
-    return jsonify({"bookings": bookings_data})
+    return jsonify({"bookings": bookings_data, "total_hours_out": total_hours_out})
 
 
 @app.route('/admin_dashboard', methods=['GET'])
@@ -623,7 +794,7 @@ def admin_dashboard():
     # Filter by date if provided
     if search_date:
         try:
-            search_date_obj = datetime.strptime(search_date, '%Y-%m-%d').date()
+            search_date_obj = datetime.strptime(search_date, '%m/%d/%Y').date()
             filters.append(SubstituteRequest.date == search_date_obj)
         except ValueError:
             # If date format is invalid, ignore this filter
@@ -632,6 +803,16 @@ def admin_dashboard():
     # Filter by status if provided
     if search_status:
         filters.append(SubstituteRequest.status == search_status)
+        
+    # Filter by school_id for level 2 admins
+    if logged_in_user.role == 'admin_l2' and logged_in_user.school_id is not None:
+        # Level 2 admins should only see requests from their school
+        # Include requests where school_id matches admin's school_id or is NULL
+        school_filter = db.or_(
+            SubstituteRequest.school_id == logged_in_user.school_id,
+            SubstituteRequest.school_id == None
+        )
+        filters.append(school_filter)
 
     # Apply all filters to the query
     if filters:
@@ -696,6 +877,12 @@ def admin_create_request():
         reason = request.form.get('reason', '')
         grade_id = request.form.get('grade_id')
         subject_id = request.form.get('subject_id')
+        
+        # Validate that the date and time are in the future
+        from helpers import is_future_date_time
+        if not is_future_date_time(date, time):
+            flash('Error: Substitute requests can only be created for future dates and times.')
+            return redirect(url_for('admin_request_form'))
 
         # Validate teacher exists
         teacher = User.query.filter_by(id=teacher_id, role='teacher').first()
@@ -724,15 +911,21 @@ def admin_create_request():
         # Generate unique token
         token = str(uuid.uuid4())
 
+        # Get teacher's school_id
+        teacher_school_id = None
+        if teacher:
+            teacher_school_id = teacher.school_id
+            
         # Create and save substitute request
         sub_request = SubstituteRequest(
             teacher_id=teacher_id,
-            date=datetime.strptime(date, '%Y-%m-%d'),
+            date=datetime.strptime(date, '%m/%d/%Y'),
             time=time,
             details=details.strip(),
             reason=reason,
             grade_id=grade_id,
             subject_id=subject_id,
+            school_id=teacher_school_id,
             token=token
         )
         db.session.add(sub_request)
@@ -849,6 +1042,12 @@ def request_form_and_submit():
             details = request.form.get('details', '')
             reason = request.form.get('reason', '')
 
+            # Validate that the date and time are in the future
+            from helpers import is_future_date_time
+            if not is_future_date_time(date, time):
+                flash('Error: Substitute requests can only be created for future dates and times.')
+                return redirect(url_for('request_form_and_submit'))
+
             teacher = get_logged_in_user()
 
             if teacher:
@@ -870,18 +1069,19 @@ def request_form_and_submit():
                     # Create and save substitute request
                     sub_request = SubstituteRequest(
                         teacher_id=teacher.id,
-                        date=datetime.strptime(date, '%Y-%m-%d'),
+                        date=datetime.strptime(date, '%m/%d/%Y'),
                         time=time,
                         details=details.strip(),
                         reason=reason,
                         grade_id=grade_id,
                         subject_id=subject_id,
+                        school_id=teacher.school_id,  # Include teacher's school_id
                         token=token
                     )
                     db.session.add(sub_request)
                     db.session.commit()
                 except ValueError as e:
-                    flash('Invalid date format. Please use YYYY-MM-DD format.')
+                    flash('Invalid date format. Please use MM/DD/YYYY format.')
                     print(f"Date parsing error: {e}")
                     return redirect(url_for('request_form_and_submit'))
                 except sqlalchemy.exc.SQLAlchemyError as e:
@@ -1068,9 +1268,13 @@ def manage_admins():
     # Get all level 2 admins
     admins = User.query.filter_by(role='admin_l2').order_by(User.name).all()
     
+    # Fetch all schools from the database
+    schools = School.query.order_by(School.name.asc()).all()
+    
     return render_template(
         'manage_admins.html',
         admins=admins,
+        schools=schools,
         user=session['user_info']
     )
 
@@ -1087,6 +1291,8 @@ def add_admin():
     name = request.form.get('name')
     email = request.form.get('email')
     phone = request.form.get('phone')
+    school_id = request.form.get('school_id')
+    campus = request.form.get('campus')  # Keep for backward compatibility
     admin_type = request.form.get('admin_type', 'front_office')  # front_office or principal
     
     # Validate required inputs
@@ -1100,6 +1306,12 @@ def add_admin():
         flash('A user with this email already exists!')
         return redirect(url_for('manage_admins'))
     
+    # If school_id is not provided but campus is, look up the school by campus code
+    if not school_id and campus:
+        school = School.query.filter_by(code=campus.strip().upper()).first()
+        if school:
+            school_id = school.id
+    
     # Create the new admin user
     logged_in_user = get_logged_in_user()
     new_admin = User(
@@ -1107,6 +1319,8 @@ def add_admin():
         email=email,
         role='admin_l2',
         phone=phone,
+        campus=campus,  # Keep for backward compatibility
+        school_id=school_id,
         created_by=logged_in_user.id if logged_in_user else None
     )
     
@@ -1239,9 +1453,10 @@ def manage_users():
         teachers = teachers_query.order_by(sort_attr).all()
         substitutes = substitutes_query.order_by(sort_attr).all()
 
-    # Fetch all grades and subjects from the database
+    # Fetch all grades, subjects, and schools from the database
     grades = Grade.query.order_by(Grade.id.asc()).all()
     subjects = Subject.query.order_by(Subject.id.asc()).all()
+    schools = School.query.order_by(School.name.asc()).all()
 
     # Render the template, passing the required data
     return render_template(
@@ -1250,11 +1465,23 @@ def manage_users():
         substitutes=substitutes,
         grades=grades,
         subjects=subjects,
+        schools=schools,
         user=session['user_info'],
         sort_by=sort_by,
         sort_order=sort_order,
         errors={},  # Add empty errors object to prevent Jinja2 from throwing an error
-        formData={'grades': [], 'subjects': []}  # Add empty formData object to prevent Jinja2 from throwing an error
+        formData={
+            'grades': [], 
+            'subjects': [], 
+            'schools': [],
+            'name': '',
+            'email': '',
+            'role': 'teacher',  # Default role
+            'phone': '',
+            'campus': '',
+            'school_id': '',
+            'userId': ''
+        }  # Initialize all formData properties to prevent Jinja2 errors
     )
 
 
@@ -1301,7 +1528,7 @@ def accept_sub_request(token):
     level2_admins = User.query.filter_by(role="admin_l2").all()
     
     # SMS notification is shorter due to character limitations
-    admin_sms_body = f"Sub position filled: {teacher.name}, {sub_request.date.strftime('%Y-%m-%d')}, {sub_request.time}, filled by {logged_in_user.name}"
+    admin_sms_body = f"Sub position filled: {teacher.name}, {sub_request.date.strftime('%B %d, %Y')}, {sub_request.time}, filled by {logged_in_user.name}"
     
     for admin in level2_admins:
         # Send email notification
@@ -1310,6 +1537,23 @@ def accept_sub_request(token):
         # Send SMS notification if phone number is available
         if admin.phone:
             send_sms(admin.phone, admin_sms_body)
+    
+    # Generate and fill absence report PDF
+    try:
+        from pdf_handler import generate_absence_form_data, fill_absence_form
+        
+        # Format the date for the PDF filename (YYYY-MM-DD)
+        request_date = sub_request.date.strftime("%Y-%m-%d")
+        
+        # Generate form data from the request
+        form_data = generate_absence_form_data(sub_request, teacher, logged_in_user)
+        
+        # Fill the PDF form
+        pdf_path = fill_absence_form(teacher.name, request_date, form_data)
+        
+        print(f"Absence report PDF generated successfully: {pdf_path}")
+    except Exception as e:
+        print(f"Error generating absence report PDF: {e}")
 
     return jsonify({"status": "success", "message": "Position accepted!"})
 
@@ -1321,10 +1565,13 @@ def add_user():
     email = request.form.get('email')
     role = request.form.get('role')
     phone = request.form.get('phone')
+    school_id = request.form.get('school_id')
+    campus = request.form.get('campus')  # Keep for backward compatibility
 
-    # Collect multiple grades and subjects from checkboxes
+    # Collect multiple grades, subjects, and schools from checkboxes
     grade_ids = request.form.getlist('grades')  # List of selected grade IDs
     subject_ids = request.form.getlist('subjects')  # List of selected subject IDs
+    school_ids = request.form.getlist('schools')  # List of selected school IDs
 
     # Validate required inputs
     if not name or not email or not role:
@@ -1342,21 +1589,34 @@ def add_user():
         flash('A user with this email already exists!')
         return redirect(url_for('manage_users'))
 
-    # Fetch grade and subject objects
+    # Fetch grade, subject, and school objects
     grade_objs = Grade.query.filter(Grade.id.in_(grade_ids)).all()
     subject_objs = Subject.query.filter(Subject.id.in_(subject_ids)).all()
+    school_objs = School.query.filter(School.id.in_(school_ids)).all()
+
+    # For backward compatibility, set school_id to the first selected school or None
+    if school_objs and not school_id:
+        school_id = school_objs[0].id
+    # If school_id is not provided but campus is, look up the school by campus code
+    elif not school_id and campus:
+        school = School.query.filter_by(code=campus.strip().upper()).first()
+        if school:
+            school_id = school.id
 
     # Create the new user
     new_user = User(
         name=name,
         email=email,
         role=role,
-        phone=phone
+        phone=phone,
+        campus=campus,  # Keep for backward compatibility
+        school_id=school_id  # Keep for backward compatibility
     )
 
-    # Assign grades and subjects to the new user
+    # Assign grades, subjects, and schools to the new user
     new_user.grades.extend(grade_objs)  # Add all selected grades
     new_user.subjects.extend(subject_objs)  # Add all selected subjects
+    new_user.schools.extend(school_objs)  # Add all selected schools
 
     # Add and commit changes to the database
     db.session.add(new_user)
@@ -1378,8 +1638,29 @@ def edit_user(user_id):
     user.email = request.form['email']
     user.role = request.form['role']
     user.phone = request.form.get('phone', None)
+    
+    # Handle school_id and campus
+    school_id = request.form.get('school_id')
+    campus = request.form.get('campus', None)
+    
+    # Get multiple schools
+    school_ids = request.form.getlist('schools')  # List of selected school IDs
+    school_objs = School.query.filter(School.id.in_(school_ids)).all()
+    
+    # For backward compatibility, set school_id to the first selected school or keep existing
+    if school_objs and not school_id:
+        school_id = school_objs[0].id
+    # If school_id is not provided but campus is, look up the school by campus code
+    elif not school_id and campus:
+        school = School.query.filter_by(code=campus.strip().upper()).first()
+        if school:
+            school_id = school.id
+    
+    # Update both fields for backward compatibility
+    user.campus = campus
+    user.school_id = school_id
 
-    # Update grades and subjects
+    # Update grades, subjects, and schools
     grade_ids = request.form.getlist('grades')  # List of selected grade IDs
     subject_ids = request.form.getlist('subjects')  # List of selected subject IDs
     grade_objs = Grade.query.filter(Grade.id.in_(grade_ids)).all()
@@ -1387,6 +1668,7 @@ def edit_user(user_id):
 
     user.grades = grade_objs
     user.subjects = subject_objs
+    user.schools = school_objs  # Update schools relationship
 
     # Save changes to the database
     db.session.commit()
@@ -1455,13 +1737,13 @@ def edit_request(request_id):
 
     if request.method == 'GET':
         # Format the date for the form
-        formatted_date = sub_request.date.strftime('%Y-%m-%d')
-        return render_template('request.html', sub_request=sub_request, formatted_date=formatted_date, edit_mode=True)
+        formatted_date = sub_request.date.strftime('%m/%d/%Y')
+        return render_template('request.html', sub_request=sub_request, formatted_date=formatted_date, edit_mode=True, user=logged_in_user)
 
     elif request.method == 'POST':
         try:
             # Update the substitute request
-            sub_request.date = datetime.strptime(request.form['date'], '%Y-%m-%d')
+            sub_request.date = datetime.strptime(request.form['date'], '%m/%d/%Y')
             sub_request.time = request.form['time']
             sub_request.details = request.form.get('details', '').strip()
             sub_request.reason = request.form.get('reason', '')
@@ -1636,3 +1918,147 @@ def transfer_admin_ownership():
 # Run the application if this file is executed directly
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
+
+@app.route('/manage_schools', methods=['GET', 'POST'])
+def manage_schools():
+    """Manage schools (for level 1 admins only)."""
+    # Ensure user is authenticated and is a level 1 admin
+    if not is_authenticated(required_role='admin_l1'):
+        flash('Access denied. Only level 1 admins can manage schools.')
+        return redirect(url_for('index'))
+    
+    # Get the logged-in user
+    logged_in_user = get_logged_in_user()
+    
+    # Handle form submission for adding a new school
+    if request.method == 'POST':
+        school_name = request.form.get('school_name')
+        school_code = request.form.get('school_code')
+        
+        # Validate inputs
+        if not school_name or not school_code:
+            flash('School name and code are required.')
+            return redirect(url_for('manage_schools'))
+        
+        try:
+            # Check if school with this name or code already exists
+            existing_school = School.query.filter(
+                (School.name == school_name) | (School.code == school_code)
+            ).first()
+            
+            if existing_school:
+                if existing_school.name == school_name:
+                    flash(f'A school with the name "{school_name}" already exists.')
+                else:
+                    flash(f'A school with the code "{school_code}" already exists.')
+                return redirect(url_for('manage_schools'))
+            
+            # Create new school
+            new_school = School(
+                name=school_name,
+                code=school_code,
+                level1_admin_id=logged_in_user.id  # Associate with the current level 1 admin
+            )
+            
+            db.session.add(new_school)
+            db.session.commit()
+            
+            flash(f'School "{school_name}" added successfully.')
+            return redirect(url_for('manage_schools'))
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f'An error occurred: {str(e)}')
+            return redirect(url_for('manage_schools'))
+    
+    # Get all schools for display
+    schools = School.query.all()
+    
+    return render_template(
+        'manage_schools.html',
+        user=logged_in_user,
+        schools=schools
+    )
+@app.route('/edit_school/<int:school_id>', methods=['POST'])
+def edit_school(school_id):
+    """Edit an existing school."""
+    # Ensure user is authenticated and is a level 1 admin
+    if not is_authenticated(required_role='admin_l1'):
+        flash('Access denied. Only level 1 admins can manage schools.')
+        return redirect(url_for('index'))
+    
+    # Get the school to edit
+    school = School.query.get_or_404(school_id)
+    
+    # Get form data
+    school_name = request.form.get('school_name')
+    school_code = request.form.get('school_code')
+    
+    # Validate inputs
+    if not school_name or not school_code:
+        flash('School name and code are required.')
+        return redirect(url_for('manage_schools'))
+    
+    try:
+        # Check if another school with this name or code already exists
+        existing_school = School.query.filter(
+            (School.name == school_name) | (School.code == school_code),
+            School.id != school_id
+        ).first()
+        
+        if existing_school:
+            if existing_school.name == school_name:
+                flash(f'Another school with the name "{school_name}" already exists.')
+            else:
+                flash(f'Another school with the code "{school_code}" already exists.')
+            return redirect(url_for('manage_schools'))
+        
+        # Update school
+        school.name = school_name
+        school.code = school_code
+        
+        db.session.commit()
+        
+        flash(f'School "{school_name}" updated successfully.')
+        return redirect(url_for('manage_schools'))
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'An error occurred: {str(e)}')
+        return redirect(url_for('manage_schools'))
+
+@app.route('/delete_school/<int:school_id>', methods=['POST'])
+def delete_school(school_id):
+    """Delete a school."""
+    # Ensure user is authenticated and is a level 1 admin
+    if not is_authenticated(required_role='admin_l1'):
+        flash('Access denied. Only level 1 admins can manage schools.')
+        return redirect(url_for('index'))
+    
+    # Get the school to delete
+    school = School.query.get_or_404(school_id)
+    
+    try:
+        # Check if there are users associated with this school
+        users_count = User.query.filter_by(school_id=school_id).count()
+        if users_count > 0:
+            flash(f'Cannot delete school "{school.name}" because it has {users_count} users associated with it. Reassign these users to another school first.')
+            return redirect(url_for('manage_schools'))
+        
+        # Check if there are substitute requests associated with this school
+        requests_count = SubstituteRequest.query.filter_by(school_id=school_id).count()
+        if requests_count > 0:
+            flash(f'Cannot delete school "{school.name}" because it has {requests_count} substitute requests associated with it.')
+            return redirect(url_for('manage_schools'))
+        
+        # Delete the school
+        db.session.delete(school)
+        db.session.commit()
+        
+        flash(f'School "{school.name}" deleted successfully.')
+        return redirect(url_for('manage_schools'))
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'An error occurred: {str(e)}')
+        return redirect(url_for('manage_schools'))

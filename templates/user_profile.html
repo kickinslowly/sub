@@ -73,6 +73,7 @@
                         <p><strong>Name:</strong> {{ user.name or 'Not provided' }}</p>
                         <p><strong>Email:</strong> {{ user.email or 'Not provided' }}</p>
                         <p><strong>Phone:</strong> {{ user.phone or 'Not provided' }}</p>
+                        <p><strong>Campus:</strong> {{ user.campus or 'Not provided' }}</p>
                         <p><strong>Role:</strong> <span class="badge {% if user.role == 'teacher' %}bg-primary{% else %}bg-success{% endif %}">{{ user.role.title() }}</span></p>
                     </div>
                     <div class="col-md-6">

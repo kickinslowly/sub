@@ -599,6 +599,12 @@
                             {% endif %}
                         </div>
                     </div>
+                    <div class="detail-item">
+                        <div class="detail-label"><i class="fas fa-clock detail-icon"></i>Total Time Out</div>
+                        <div class="detail-value">
+                            <span id="total-hours-out" class="badge" style="font-size: 1.1rem; background-color: rgba(255, 255, 255, 0.3);">{{ total_hours_out }} hours</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -680,6 +686,12 @@
                                     <span class="booking-detail-value">{{ booking.substitute_user.name }}</span>
                                 </div>
                                 {% endif %}
+                                {% if booking.school %}
+                                <div class="booking-detail">
+                                    <span class="booking-detail-label">School</span>
+                                    <span class="booking-detail-value">{{ booking.school.name }}</span>
+                                </div>
+                                {% endif %}
                                 {% if booking.grade %}
                                 <div class="booking-detail">
                                     <span class="booking-detail-label">Grade</span>
@@ -751,6 +763,12 @@
                                         <span class="status-indicator status-open">Open</span>
                                     </span>
                                 </div>
+                                {% if booking.school %}
+                                <div class="booking-detail">
+                                    <span class="booking-detail-label">School</span>
+                                    <span class="booking-detail-value">{{ booking.school.name }}</span>
+                                </div>
+                                {% endif %}
                                 {% if booking.grade %}
                                 <div class="booking-detail">
                                     <span class="booking-detail-label">Grade</span>
@@ -825,6 +843,12 @@
                                     <span class="booking-detail-label">Filled by</span>
                                     <span class="booking-detail-value">{{ booking.substitute_user.name }}</span>
                                 </div>
+                                {% if booking.school %}
+                                <div class="booking-detail">
+                                    <span class="booking-detail-label">School</span>
+                                    <span class="booking-detail-value">{{ booking.school.name }}</span>
+                                </div>
+                                {% endif %}
                                 {% if booking.grade %}
                                 <div class="booking-detail">
                                     <span class="booking-detail-label">Grade</span>
@@ -923,6 +947,11 @@
                     .then(data => {
                         // Update the UI with new data
                         updateBookings(data.bookings);
+                        
+                        // Update total hours out
+                        if (data.total_hours_out !== undefined) {
+                            updateTotalHoursOut(data.total_hours_out);
+                        }
 
                         // Show success toast
                         showToast('Bookings refreshed successfully!');
@@ -1133,6 +1162,14 @@
                         }
                     });
                 });
+            }
+            
+            // Function to update the total hours out display
+            function updateTotalHoursOut(totalHours) {
+                const totalHoursElement = document.getElementById('total-hours-out');
+                if (totalHoursElement) {
+                    totalHoursElement.textContent = `${totalHours} hours`;
+                }
             }
         });
     </script>

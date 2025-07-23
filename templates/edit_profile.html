@@ -263,6 +263,22 @@
                 </div>
                 
                 <div class="form-group">
+                    <label>Schools:</label>
+                    <div class="checkbox-group">
+                        {% for school in schools %}
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="school-{{ school.id }}" name="schools" value="{{ school.id }}" 
+                                    {% if school in user.schools %}checked{% endif %}>
+                                <label for="school-{{ school.id }}">{{ school.name }}</label>
+                            </div>
+                        {% endfor %}
+                    </div>
+                    
+                    <!-- Hidden field for backward compatibility -->
+                    <input type="hidden" name="school_id" value="{{ user.school_id }}">
+                </div>
+                
+                <div class="form-group">
                     <label>Grades You Can Teach:</label>
                     <div class="checkbox-group">
                         {% for grade in grades %}

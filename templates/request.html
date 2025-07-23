@@ -269,6 +269,12 @@
     <script>
         // Initialize Flatpickr time pickers
         document.addEventListener('DOMContentLoaded', function() {
+            // Initialize date picker with minDate option to prevent selecting past dates
+            flatpickr("#date", {
+                dateFormat: "m/d/Y",
+                minDate: "today"
+            });
+            
             // Common time picker options
             const timeOptions = {
                 enableTime: true,
