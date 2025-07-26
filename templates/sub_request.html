@@ -116,8 +116,6 @@
                                     <p><span class="info-label"><i class="fas fa-school me-2"></i>School:</span> {{ sub_request.school.name }}</p>
                                     {% elif teacher.school %}
                                     <p><span class="info-label"><i class="fas fa-school me-2"></i>School:</span> {{ teacher.school.name }}</p>
-                                    {% elif teacher.campus %}
-                                    <p><span class="info-label"><i class="fas fa-school me-2"></i>Campus:</span> {{ teacher.campus }}</p>
                                     {% endif %}
                                     <p><span class="info-label"><i class="fas fa-calendar-day me-2"></i>Date:</span> {{ sub_request.date.strftime('%B %d, %Y') }}</p>
                                     <p><span class="info-label"><i class="fas fa-clock me-2"></i>Time:</span> {{ sub_request.time }}</p>

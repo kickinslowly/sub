@@ -96,6 +96,7 @@
                     </div>
                     <div class="card-body">
                         <form action="/add_admin" method="POST">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <div class="mb-3">
                                 <label for="name" class="form-label">Name:</label>
                                 <input type="text" id="name" name="name" class="form-control" required>
@@ -202,6 +203,7 @@
                 </div>
                 <div class="modal-body">
                     <form id="edit-user-form" method="POST" action="">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="mb-3">
                             <label for="edit-name" class="form-label">Name:</label>
                             <input type="text" class="form-control" id="edit-name" name="name" required>
@@ -252,6 +254,7 @@
                     <p>Are you sure you want to remove <strong><span id="delete-user-name"></span></strong>?</p>
                     <p class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>This action cannot be undone.</p>
                     <form id="delete-user-form" method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <!-- Hidden input to store user_id -->
                         <input type="hidden" id="delete-user-id" name="user_id">
 

@@ -10,8 +10,6 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <!-- Font Awesome for backward compatibility -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Vue.js -->
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <style>
         :root {
             --primary-color: #4e73df;
@@ -193,7 +191,7 @@
             </button>
         </div>
 
-    <!-- Add User Modal - Vue Component -->
+    <!-- Add User Modal -->
     <div id="add-user-modal-app">
         <div class="modal fade" id="add-user-modal" tabindex="-1" aria-labelledby="addUserModalLabel" aria-hidden="true">
             <div class="modal-dialog">
@@ -202,24 +200,20 @@
                         <h5 class="modal-title" id="addUserModalLabel">
                             <i class="bi bi-person-plus-fill me-2"></i>Add User
                         </h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" @click="resetForm"></button>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
-                        <form id="add-user-form" @submit.prevent="submitForm" method="POST" action="{{ url_for('add_user') }}">
+                        <form id="add-user-form" method="POST" action="{{ url_for('add_user') }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <div class="mb-3">
                                 <label for="name" class="form-label">Name:</label>
                                 <input 
                                     type="text" 
                                     class="form-control" 
-                                    :class="{'is-invalid': errors.name}" 
                                     id="name" 
                                     name="name" 
-                                    v-model="formData.name" 
-                                    @input="validateName"
                                     required>
-                                <div class="invalid-feedback" v-if="errors.name">
-                                    {{ errors.name }}
-                                </div>
+                                <div class="invalid-feedback" id="name-error" style="display: none;"></div>
                             </div>
 
                             <div class="mb-3">
@@ -227,15 +221,10 @@
                                 <input 
                                     type="email" 
                                     class="form-control" 
-                                    :class="{'is-invalid': errors.email}" 
                                     id="email" 
                                     name="email" 
-                                    v-model="formData.email" 
-                                    @input="validateEmail"
                                     required>
-                                <div class="invalid-feedback" v-if="errors.email">
-                                    {{ errors.email }}
-                                </div>
+                                <div class="invalid-feedback" id="email-error" style="display: none;"></div>
                             </div>
 
                             <div class="mb-3">
@@ -243,8 +232,7 @@
                                 <select 
                                     class="form-select" 
                                     id="role" 
-                                    name="role" 
-                                    v-model="formData.role">
+                                    name="role">
                                     <option value="teacher">Teacher</option>
                                     <option value="substitute">Substitute</option>
                                 </select>
@@ -262,8 +250,7 @@
                                                     type="checkbox" 
                                                     name="grades" 
                                                     value="{{ grade.id }}" 
-                                                    id="grade-{{ grade.id }}"
-                                                    v-model="formData.grades">
+                                                    id="grade-{{ grade.id }}">
                                                 <label class="form-check-label" for="grade-{{ grade.id }}">
                                                     {{ grade.name }}
                                                 </label>
@@ -273,9 +260,7 @@
                                     </div>
                                 </div>
                                 <div class="form-text mt-1">
-                                    <span v-if="formData.grades.length > 0">
-                                        Selected: {{ formData.grades.length }} grade(s)
-                                    </span>
+                                    <span id="grades-counter" style="display: none;"></span>
                                 </div>
                             </div>
 
@@ -291,8 +276,7 @@
                                                     type="checkbox" 
                                                     name="subjects" 
                                                     value="{{ subject.id }}" 
-                                                    id="subject-{{ subject.id }}"
-                                                    v-model="formData.subjects">
+                                                    id="subject-{{ subject.id }}">
                                                 <label class="form-check-label" for="subject-{{ subject.id }}">
                                                     {{ subject.name }}
                                                 </label>
@@ -302,9 +286,7 @@
                                     </div>
                                 </div>
                                 <div class="form-text mt-1">
-                                    <span v-if="formData.subjects.length > 0">
-                                        Selected: {{ formData.subjects.length }} subject(s)
-                                    </span>
+                                    <span id="subjects-counter" style="display: none;"></span>
                                 </div>
                             </div>
 
@@ -313,15 +295,10 @@
                                 <input 
                                     type="text" 
                                     class="form-control" 
-                                    :class="{'is-invalid': errors.phone}" 
                                     id="phone" 
-                                    name="phone" 
-                                    v-model="formData.phone"
-                                    @input="validatePhone">
-                                <div class="invalid-feedback" v-if="errors.phone">
-                                    {{ errors.phone }}
-                                </div>
-                                <div class="form-text" v-if="!errors.phone && formData.phone">
+                                    name="phone">
+                                <div class="invalid-feedback" id="phone-error" style="display: none;"></div>
+                                <div class="form-text" id="phone-hint" style="display: none;">
                                     Format: (123) 456-7890
                                 </div>
                             </div>
@@ -338,8 +315,7 @@
                                                     type="checkbox" 
                                                     name="schools" 
                                                     value="{{ school.id }}" 
-                                                    id="school-{{ school.id }}"
-                                                    v-model="formData.schools">
+                                                    id="school-{{ school.id }}">
                                                 <label class="form-check-label" for="school-{{ school.id }}">
                                                     {{ school.name }}
                                                 </label>
@@ -349,26 +325,24 @@
                                     </div>
                                 </div>
                                 <div class="form-text mt-1">
-                                    <span v-if="formData.schools.length > 0">
-                                        Selected: {{ formData.schools.length }} school(s)
-                                    </span>
+                                    <span id="schools-counter" style="display: none;"></span>
                                 </div>
                                 
                                 <!-- Hidden field for backward compatibility -->
-                                <input type="hidden" name="school_id" v-model="formData.school_id">
+                                <input type="hidden" name="school_id" id="school_id">
                             </div>
 
                             <div class="modal-footer px-0 pb-0">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" @click="resetForm">Cancel</button>
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                                 <button 
                                     type="submit" 
                                     class="btn btn-success" 
-                                    :disabled="!isFormValid || isSubmitting">
-                                    <span v-if="isSubmitting">
+                                    id="submit-btn">
+                                    <span id="submit-btn-loader" style="display: none;">
                                         <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                                         Processing...
                                     </span>
-                                    <span v-else>
+                                    <span id="submit-btn-text">
                                         <i class="bi bi-person-plus-fill me-1"></i>Add User
                                     </span>
                                 </button>
@@ -380,7 +354,7 @@
         </div>
     </div>
 
-    <!-- Edit User Modal - Vue Component -->
+    <!-- Edit User Modal -->
     <div id="edit-user-modal-app">
         <div class="modal fade" id="edit-user-modal" tabindex="-1" aria-labelledby="editUserModalLabel" aria-hidden="true">
             <div class="modal-dialog">
@@ -389,24 +363,20 @@
                         <h5 class="modal-title" id="editUserModalLabel">
                             <i class="bi bi-pencil-square me-2"></i>Edit User
                         </h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" @click="resetForm"></button>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
-                        <form id="edit-user-form" @submit.prevent="submitForm" method="POST" :action="formAction">
+                        <form id="edit-user-form" method="POST">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <div class="mb-3">
                                 <label for="edit-name" class="form-label">Name:</label>
                                 <input 
                                     type="text" 
                                     class="form-control" 
-                                    :class="{'is-invalid': errors.name}" 
                                     id="edit-name" 
                                     name="name" 
-                                    v-model="formData.name" 
-                                    @input="validateName"
                                     required>
-                                <div class="invalid-feedback" v-if="errors.name">
-                                    {{ errors.name }}
-                                </div>
+                                <div class="invalid-feedback" id="edit-name-error" style="display: none;"></div>
                             </div>
 
                             <div class="mb-3">
@@ -414,15 +384,10 @@
                                 <input 
                                     type="email" 
                                     class="form-control" 
-                                    :class="{'is-invalid': errors.email}" 
                                     id="edit-email" 
                                     name="email" 
-                                    v-model="formData.email" 
-                                    @input="validateEmail"
                                     required>
-                                <div class="invalid-feedback" v-if="errors.email">
-                                    {{ errors.email }}
-                                </div>
+                                <div class="invalid-feedback" id="edit-email-error" style="display: none;"></div>
                             </div>
 
                             <div class="mb-3">
@@ -430,8 +395,7 @@
                                 <select 
                                     class="form-select" 
                                     id="edit-role" 
-                                    name="role" 
-                                    v-model="formData.role">
+                                    name="role">
                                     <option value="teacher">Teacher</option>
                                     <option value="substitute">Substitute</option>
                                 </select>
@@ -449,8 +413,7 @@
                                                     type="checkbox" 
                                                     name="grades" 
                                                     value="{{ grade.id }}" 
-                                                    id="edit-grade-{{ grade.id }}"
-                                                    v-model="formData.grades">
+                                                    id="edit-grade-{{ grade.id }}">
                                                 <label class="form-check-label" for="edit-grade-{{ grade.id }}">
                                                     {{ grade.name }}
                                                 </label>
@@ -460,9 +423,7 @@
                                     </div>
                                 </div>
                                 <div class="form-text mt-1">
-                                    <span v-if="formData.grades.length > 0">
-                                        Selected: {{ formData.grades.length }} grade(s)
-                                    </span>
+                                    <span id="edit-grades-counter" style="display: none;"></span>
                                 </div>
                             </div>
 
@@ -478,8 +439,7 @@
                                                     type="checkbox" 
                                                     name="subjects" 
                                                     value="{{ subject.id }}" 
-                                                    id="edit-subject-{{ subject.id }}"
-                                                    v-model="formData.subjects">
+                                                    id="edit-subject-{{ subject.id }}">
                                                 <label class="form-check-label" for="edit-subject-{{ subject.id }}">
                                                     {{ subject.name }}
                                                 </label>
@@ -489,9 +449,7 @@
                                     </div>
                                 </div>
                                 <div class="form-text mt-1">
-                                    <span v-if="formData.subjects.length > 0">
-                                        Selected: {{ formData.subjects.length }} subject(s)
-                                    </span>
+                                    <span id="edit-subjects-counter" style="display: none;"></span>
                                 </div>
                             </div>
 
@@ -500,15 +458,10 @@
                                 <input 
                                     type="text" 
                                     class="form-control" 
-                                    :class="{'is-invalid': errors.phone}" 
                                     id="edit-phone" 
-                                    name="phone" 
-                                    v-model="formData.phone"
-                                    @input="validatePhone">
-                                <div class="invalid-feedback" v-if="errors.phone">
-                                    {{ errors.phone }}
-                                </div>
-                                <div class="form-text" v-if="!errors.phone && formData.phone">
+                                    name="phone">
+                                <div class="invalid-feedback" id="edit-phone-error" style="display: none;"></div>
+                                <div class="form-text" id="edit-phone-hint" style="display: none;">
                                     Format: (123) 456-7890
                                 </div>
                             </div>
@@ -525,8 +478,7 @@
                                                     type="checkbox" 
                                                     name="schools" 
                                                     value="{{ school.id }}" 
-                                                    id="edit-school-{{ school.id }}"
-                                                    v-model="formData.schools">
+                                                    id="edit-school-{{ school.id }}">
                                                 <label class="form-check-label" for="edit-school-{{ school.id }}">
                                                     {{ school.name }}
                                                 </label>
@@ -536,29 +488,27 @@
                                     </div>
                                 </div>
                                 <div class="form-text mt-1">
-                                    <span v-if="formData.schools.length > 0">
-                                        Selected: {{ formData.schools.length }} school(s)
-                                    </span>
+                                    <span id="edit-schools-counter" style="display: none;"></span>
                                 </div>
                                 
                                 <!-- Hidden field for backward compatibility -->
-                                <input type="hidden" name="school_id" v-model="formData.school_id">
+                                <input type="hidden" name="school_id" id="edit-school_id">
                             </div>
 
                             <!-- Hidden input to store user_id -->
-                            <input type="hidden" id="edit-user-id" name="user_id" v-model="formData.userId">
+                            <input type="hidden" id="edit-user-id" name="user_id">
 
                             <div class="modal-footer px-0 pb-0">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" @click="resetForm">Cancel</button>
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                                 <button 
                                     type="submit" 
                                     class="btn btn-primary" 
-                                    :disabled="!isFormValid || isSubmitting">
-                                    <span v-if="isSubmitting">
+                                    id="edit-submit-btn">
+                                    <span id="edit-submit-btn-loader" style="display: none;">
                                         <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                                         Processing...
                                     </span>
-                                    <span v-else>
+                                    <span id="edit-submit-btn-text">
                                         <i class="bi bi-save me-1"></i>Save Changes
                                     </span>
                                 </button>
@@ -582,6 +532,7 @@
                     <p>Are you sure you want to remove <strong><span id="delete-user-name"></span></strong>?</p>
                     <p class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>This action cannot be undone.</p>
                     <form id="delete-user-form" method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <!-- Hidden input to store user_id -->
                         <input type="hidden" id="delete-user-id" name="user_id">
 
@@ -678,7 +629,6 @@
                                             data-user-email="{{ teacher.email }}"
                                             data-user-role="{{ teacher.role }}"
                                             data-user-phone="{{ teacher.phone }}"
-                                            data-user-campus="{{ teacher.campus }}"
                                             data-user-school-id="{{ teacher.school_id }}"
                                             data-user-grades="{{ teacher.grades|map(attribute='id')|list|tojson }}"
                                             data-user-subjects="{{ teacher.subjects|map(attribute='id')|list|tojson }}"
@@ -785,7 +735,6 @@
                                             data-user-email="{{ substitute.email }}"
                                             data-user-role="{{ substitute.role }}"
                                             data-user-phone="{{ substitute.phone }}"
-                                            data-user-campus="{{ substitute.campus }}"
                                             data-user-school-id="{{ substitute.school_id }}"
                                             data-user-grades="{{ substitute.grades|map(attribute='id')|list|tojson }}"
                                             data-user-subjects="{{ substitute.subjects|map(attribute='id')|list|tojson }}"
@@ -811,332 +760,9 @@
 
     <!-- Bootstrap JS Bundle with Popper -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
-    <script>
-        // Initialize Bootstrap modals
-        let addUserModal, editUserModal, deleteUserModal;
-
-        // Create Add User Vue App
-        const addUserApp = Vue.createApp({
-            data() {
-                return {
-                    formData: {
-                        name: '',
-                        email: '',
-                        role: 'teacher',
-                        grades: [],
-                        subjects: [],
-                        schools: [],
-                        phone: '',
-                        campus: '',
-                        school_id: ''
-                    },
-                    errors: {
-                        name: '',
-                        email: '',
-                        phone: ''
-                    },
-                    isSubmitting: false
-                };
-            },
-            computed: {
-                isFormValid() {
-                    return this.formData.name && 
-                           this.formData.email && 
-                           !this.errors.name && 
-                           !this.errors.email && 
-                           !this.errors.phone;
-                }
-            },
-            methods: {
-                validateName() {
-                    if (!this.formData.name) {
-                        this.errors.name = 'Name is required';
-                    } else if (this.formData.name.length < 2) {
-                        this.errors.name = 'Name must be at least 2 characters';
-                    } else {
-                        this.errors.name = '';
-                    }
-                },
-                validateEmail() {
-                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                    if (!this.formData.email) {
-                        this.errors.email = 'Email is required';
-                    } else if (!emailRegex.test(this.formData.email)) {
-                        this.errors.email = 'Please enter a valid email address';
-                    } else {
-                        this.errors.email = '';
-                    }
-                },
-                validatePhone() {
-                    if (!this.formData.phone) {
-                        this.errors.phone = '';
-                        return;
-                    }
-
-                    // Remove all non-digit characters for validation
-                    const digitsOnly = this.formData.phone.replace(/\D/g, '');
-
-                    if (digitsOnly.length !== 10) {
-                        this.errors.phone = 'Phone number must be 10 digits';
-                    } else {
-                        // Format the phone number as (XXX) XXX-XXXX
-                        this.formData.phone = `(${digitsOnly.substring(0, 3)}) ${digitsOnly.substring(3, 6)}-${digitsOnly.substring(6)}`;
-                        this.errors.phone = '';
-                    }
-                },
-                resetForm() {
-                    this.formData = {
-                        name: '',
-                        email: '',
-                        role: 'teacher',
-                        grades: [],
-                        subjects: [],
-                        schools: [],
-                        phone: '',
-                        campus: '',
-                        school_id: ''
-                    };
-                    this.errors = {
-                        name: '',
-                        email: '',
-                        phone: ''
-                    };
-                    this.isSubmitting = false;
-                },
-                submitForm() {
-                    // Validate all fields before submission
-                    this.validateName();
-                    this.validateEmail();
-                    this.validatePhone();
-
-                    if (!this.isFormValid) {
-                        return;
-                    }
-
-                    this.isSubmitting = true;
-
-                    // Submit the form
-                    document.getElementById('add-user-form').submit();
-                }
-            }
-        }).mount('#add-user-modal-app');
-
-        // Create Edit User Vue App
-        const editUserApp = Vue.createApp({
-            data() {
-                return {
-                    formData: {
-                        userId: '',
-                        name: '',
-                        email: '',
-                        role: 'teacher',
-                        grades: [],
-                        subjects: [],
-                        schools: [],
-                        phone: '',
-                        campus: '',
-                        school_id: ''
-                    },
-                    errors: {
-                        name: '',
-                        email: '',
-                        phone: ''
-                    },
-                    isSubmitting: false,
-                    formAction: ''
-                };
-            },
-            computed: {
-                isFormValid() {
-                    return this.formData.name && 
-                           this.formData.email && 
-                           !this.errors.name && 
-                           !this.errors.email && 
-                           !this.errors.phone;
-                }
-            },
-            methods: {
-                validateName() {
-                    if (!this.formData.name) {
-                        this.errors.name = 'Name is required';
-                    } else if (this.formData.name.length < 2) {
-                        this.errors.name = 'Name must be at least 2 characters';
-                    } else {
-                        this.errors.name = '';
-                    }
-                },
-                validateEmail() {
-                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                    if (!this.formData.email) {
-                        this.errors.email = 'Email is required';
-                    } else if (!emailRegex.test(this.formData.email)) {
-                        this.errors.email = 'Please enter a valid email address';
-                    } else {
-                        this.errors.email = '';
-                    }
-                },
-                validatePhone() {
-                    if (!this.formData.phone) {
-                        this.errors.phone = '';
-                        return;
-                    }
-
-                    // Remove all non-digit characters for validation
-                    const digitsOnly = this.formData.phone.replace(/\D/g, '');
-
-                    if (digitsOnly.length !== 10) {
-                        this.errors.phone = 'Phone number must be 10 digits';
-                    } else {
-                        // Format the phone number as (XXX) XXX-XXXX
-                        this.formData.phone = `(${digitsOnly.substring(0, 3)}) ${digitsOnly.substring(3, 6)}-${digitsOnly.substring(6)}`;
-                        this.errors.phone = '';
-                    }
-                },
-                resetForm() {
-                    this.formData = {
-                        userId: '',
-                        name: '',
-                        email: '',
-                        role: 'teacher',
-                        grades: [],
-                        subjects: [],
-                        schools: [],
-                        phone: '',
-                        campus: '',
-                        school_id: ''
-                    };
-                    this.errors = {
-                        name: '',
-                        email: '',
-                        phone: ''
-                    };
-                    this.isSubmitting = false;
-                    this.formAction = '';
-                },
-                setUserData(userData) {
-                    this.formData.userId = userData.userId;
-                    this.formData.name = userData.name;
-                    this.formData.email = userData.email;
-                    this.formData.role = userData.role;
-                    this.formData.phone = userData.phone || '';
-                    this.formData.campus = userData.campus || '';
-                    this.formData.school_id = userData.school_id || '';
-                    this.formData.grades = userData.grades || [];
-                    this.formData.subjects = userData.subjects || [];
-                    this.formData.schools = userData.schools || [];
-                    this.formAction = `/edit_user/${userData.userId}`;
-                },
-                submitForm() {
-                    // Validate all fields before submission
-                    this.validateName();
-                    this.validateEmail();
-                    this.validatePhone();
-
-                    if (!this.isFormValid) {
-                        return;
-                    }
-
-                    this.isSubmitting = true;
-
-                    // Submit the form
-                    document.getElementById('edit-user-form').submit();
-                }
-            }
-        }).mount('#edit-user-modal-app');
-
-        document.addEventListener('DOMContentLoaded', function() {
-            // Initialize Bootstrap modals
-            addUserModal = new bootstrap.Modal(document.getElementById('add-user-modal'));
-            editUserModal = new bootstrap.Modal(document.getElementById('edit-user-modal'));
-            deleteUserModal = new bootstrap.Modal(document.getElementById('delete-user-modal'));
-
-            // Add User Modal
-            const addUserBtn = document.getElementById('add-user-btn');
-
-            addUserBtn.addEventListener('click', () => {
-                // Reset the form before showing the modal
-                addUserApp.resetForm();
-                addUserModal.show();
-            });
-
-            // Edit User Modal
-            const editButtons = document.querySelectorAll('.edit-btn');
-
-            editButtons.forEach(button => {
-                button.addEventListener('click', () => {
-                    const userId = button.dataset.userId;
-                    const userName = button.dataset.userName;
-                    const userEmail = button.dataset.userEmail;
-                    const userRole = button.dataset.userRole;
-                    const userPhone = button.dataset.userPhone;
-                    const userCampus = button.dataset.userCampus;
-                    const userSchoolId = button.dataset.userSchoolId;
-
-                    // Get the user's grades, subjects, and schools from data attributes
-                    let userGrades = [];
-                    let userSubjects = [];
-                    let userSchools = [];
-
-                    try {
-                        // Parse the JSON data from the data attributes
-                        userGrades = JSON.parse(button.dataset.userGrades || '[]');
-                        userSubjects = JSON.parse(button.dataset.userSubjects || '[]');
-                        
-                        // For backward compatibility, if schools data attribute exists, use it
-                        // otherwise create a single-item array with the school_id if it exists
-                        if (button.dataset.userSchools) {
-                            userSchools = JSON.parse(button.dataset.userSchools || '[]');
-                        } else if (button.dataset.userSchoolId) {
-                            userSchools = [parseInt(button.dataset.userSchoolId)];
-                        }
-                    } catch (e) {
-                        console.error('Error parsing grades, subjects, or schools:', e);
-                    }
-
-                    // Set the user data in the Vue app
-                    editUserApp.setUserData({
-                        userId: userId,
-                        name: userName,
-                        email: userEmail,
-                        role: userRole,
-                        phone: userPhone || '',
-                        campus: userCampus || '',
-                        school_id: userSchoolId || '',
-                        grades: userGrades,
-                        subjects: userSubjects,
-                        schools: userSchools
-                    });
-
-                    // Show the modal
-                    editUserModal.show();
-                });
-            });
-
-            // Delete User Modal
-            const deleteButtons = document.querySelectorAll('.delete-btn');
-            const deleteUserName = document.getElementById('delete-user-name');
-            const deleteUserId = document.getElementById('delete-user-id');
-            const deleteUserForm = document.getElementById('delete-user-form');
-
-            deleteButtons.forEach(button => {
-                button.addEventListener('click', () => {
-                    const userId = button.dataset.userId;
-                    const userName = button.dataset.userName;
-
-                    // Populate modal with user details
-                    deleteUserId.value = userId;
-                    deleteUserName.textContent = userName;
-
-                    // Dynamically set the form action
-                    deleteUserForm.action = `/delete_user/${userId}`;
-
-                    // Show the modal
-                    deleteUserModal.show();
-                });
-            });
-        });
-    </script>
+    
+    <!-- User Management JavaScript -->
+    <script src="{{ url_for('static', filename='js/user_management.js') }}"></script>
     </div> <!-- Close container-fluid -->
 </body>
 </html>

@@ -2,7 +2,7 @@ from flask import Flask, redirect, url_for, session, render_template, request, f
 from authlib.integrations.flask_client import OAuth
 from config import Config
 from datetime import datetime, timedelta
-from models import User, SubstituteRequest, SubstituteUnavailability, Grade, Subject, School, user_grades, user_subjects # Import models
+from models import User, SubstituteRequest, SubstituteUnavailability, Grade, Subject, School, Organization, user_grades, user_subjects, user_schools # Import models
 from sqlalchemy.orm import aliased
 import uuid
 import sqlite3
@@ -11,15 +11,32 @@ import sqlalchemy.exc  # Import SQLAlchemy exceptions
 from werkzeug.security import check_password_hash
 from twilio.rest import Client
 from helpers import requires_role, is_tech_coordinator, is_admin_l2, is_admin, register_template_filters
+import logging
+from logging_config import configure_logging
 
 # Initialize Flask app
 app = Flask(__name__)
 app.config.from_object(Config)
 
+# Configure logging
+logger = configure_logging(app)
+
+# Validate configuration
+try:
+    Config.validate_config()
+except EnvironmentError as e:
+    app.logger.error(f"Configuration error: {e}")
+    # Continue with initialization, but some features may be disabled
+
 # Initialize extensions
-from extensions import db, mail
+from extensions import db, mail, csrf, limiter
 db.init_app(app)
 mail.init_app(app)
+csrf.init_app(app)
+limiter.init_app(app)
+
+# Configure default rate limits
+limiter.default_limits = ["200 per day", "50 per hour"]
 
 # Register custom template filters
 register_template_filters(app)
@@ -48,38 +65,29 @@ with app.app_context():
     start_scheduler()
 
 # Initialize Twilio client
-if hasattr(Config, 'TWILIO_ACCOUNT_SID') and hasattr(Config, 'TWILIO_AUTH_TOKEN'):
-    if Config.TWILIO_ACCOUNT_SID and Config.TWILIO_AUTH_TOKEN and Config.TWILIO_PHONE_NUMBER:
-        # Use the init_twilio function from extensions.py
-        from extensions import init_twilio
-        if init_twilio(Config.TWILIO_ACCOUNT_SID, Config.TWILIO_AUTH_TOKEN):
-            print("Twilio client initialized successfully")
-        else:
-            print("Failed to initialize Twilio client")
-            print("SMS functionality will be disabled")
+if all([Config.TWILIO_ACCOUNT_SID, Config.TWILIO_AUTH_TOKEN, Config.TWILIO_PHONE_NUMBER]):
+    # Use the init_twilio function from extensions.py
+    from extensions import init_twilio
+    if init_twilio(Config.TWILIO_ACCOUNT_SID, Config.TWILIO_AUTH_TOKEN):
+        logger.info("Twilio client initialized successfully")
     else:
-        print("Twilio credentials are not properly configured. SMS functionality will be disabled.")
+        logger.warning("Failed to initialize Twilio client. SMS functionality will be disabled")
 else:
-    print("Twilio configuration is missing. SMS functionality will be disabled.")
+    logger.warning("Twilio credentials are not properly configured. SMS functionality will be disabled.")
 
 # Import helper functions after Twilio client is initialized
 from helpers import send_email, send_sms
 
-print("Registering models...")
+logger.debug("Registering models...")
 # Wrap database queries in app.app_context() to ensure they work
 with app.app_context():
-    # Create all tables first
-    db.create_all()
-    print("Created all database tables")
-
-    print("Registered tables in metadata:", db.metadata.tables.keys())
+    # Tables are created by Alembic migrations, not manually
+    logger.debug(f"Registered tables in metadata: {db.metadata.tables.keys()}")
     try:
-        print("Grades:", Grade.query.all())
+        logger.debug(f"Grades: {Grade.query.all()}")
     except Exception as e:
-        print(f"Error querying Grades table: {e}")
-        # If there's an error, try to create the tables again
-        db.create_all()
-        print("Attempted to create tables again after error")
+        logger.error(f"Error querying Grades table: {e}")
+        logger.info("Run 'flask db upgrade' to ensure all migrations are applied")
 
 def seed_database():
     """
@@ -125,260 +133,18 @@ def seed_database():
     db.session.commit()
 
 
-# Function to check and add missing columns
-def update_database_schema():
-    """Check if required columns exist in tables and handle schema migrations."""
-    try:
-        # Get the database path from the app config
-        db_uri = app.config['SQLALCHEMY_DATABASE_URI']
+# Note: Manual schema updates have been removed.
+# All schema changes are now handled through Alembic migrations.
+# To create a new migration: flask db migrate -m "Description of changes"
+# To apply migrations: flask db upgrade
 
-        # Handle both relative and absolute paths
-        if db_uri.startswith('sqlite:///'):
-            # Relative path
-            db_path = db_uri.replace('sqlite:///', '')
-            # Make it absolute if it's not already
-            if not os.path.isabs(db_path):
-                # In Flask, relative database paths are relative to the instance directory
-                # Use Flask's instance_path attribute
-                db_path = os.path.join(app.instance_path, db_path)
-        elif db_uri.startswith('sqlite:////'):
-            # Absolute path
-            db_path = db_uri.replace('sqlite:////', '')
-        else:
-            print(f"Unsupported database URI format: {db_uri}")
-            return
-
-        print(f"Using database path: {db_path}")
-
-        # Connect to the SQLite database
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-
-        # Check if the substitute_request table exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='substitute_request'")
-        if cursor.fetchone() is None:
-            # Table doesn't exist yet, it will be created by db.create_all()
-            print("substitute_request table doesn't exist yet, it will be created by db.create_all()")
-        else:
-            # Check which columns exist in the substitute_request table
-            cursor.execute("PRAGMA table_info(substitute_request)")
-            columns_info = cursor.fetchall()
-            columns = [column[1] for column in columns_info]
-            print(f"Existing columns in substitute_request: {columns}")
-
-            # Check if all required columns exist
-            required_columns = ['id', 'teacher_id', 'date', 'time', 'details', 'reason', 'status', 'substitute_id', 'token', 'created_at', 'grade_id', 'subject_id']
-            missing_columns = [col for col in required_columns if col not in columns]
-
-            if missing_columns:
-                print(f"Missing columns in substitute_request table: {missing_columns}")
-
-                # If 'reason' column is missing, try to add it
-                if 'reason' in missing_columns:
-                    try:
-                        print("Adding reason column...")
-                        cursor.execute("ALTER TABLE substitute_request ADD COLUMN reason VARCHAR(20)")
-                        conn.commit()
-                        print("Added reason column to substitute_request table")
-                        missing_columns.remove('reason')
-                    except sqlite3.OperationalError as e:
-                        print(f"Error adding reason column: {e}")
-
-                # If 'created_at' column is missing, try to add it
-                if 'created_at' in missing_columns:
-                    try:
-                        print("Adding created_at column...")
-                        cursor.execute("ALTER TABLE substitute_request ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-                        current_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-                        cursor.execute(f"UPDATE substitute_request SET created_at = '{current_time}'")
-                        conn.commit()
-                        print("Added created_at column to substitute_request table")
-                        missing_columns.remove('created_at')
-                    except sqlite3.OperationalError as e:
-                        print(f"Error adding created_at column: {e}")
-
-                # If 'grade_id' column is missing, try to add it
-                if 'grade_id' in missing_columns:
-                    try:
-                        print("Adding grade_id column...")
-                        cursor.execute("ALTER TABLE substitute_request ADD COLUMN grade_id INTEGER")
-                        conn.commit()
-                        print("Added grade_id column to substitute_request table")
-                        missing_columns.remove('grade_id')
-                    except sqlite3.OperationalError as e:
-                        print(f"Error adding grade_id column: {e}")
-
-                # If 'subject_id' column is missing, try to add it
-                if 'subject_id' in missing_columns:
-                    try:
-                        print("Adding subject_id column...")
-                        cursor.execute("ALTER TABLE substitute_request ADD COLUMN subject_id INTEGER")
-                        conn.commit()
-                        print("Added subject_id column to substitute_request table")
-                        missing_columns.remove('subject_id')
-                    except sqlite3.OperationalError as e:
-                        print(f"Error adding subject_id column: {e}")
-
-                # If there are still missing columns that couldn't be added, drop and recreate the table
-                if missing_columns:
-                    print(f"Still missing columns: {missing_columns}. Will drop and recreate the table.")
-
-                    # Backup existing data
-                    cursor.execute("CREATE TABLE IF NOT EXISTS substitute_request_backup AS SELECT * FROM substitute_request")
-
-                    # Drop the table
-                    cursor.execute("DROP TABLE substitute_request")
-
-                    conn.commit()
-                    print("Dropped substitute_request table. It will be recreated by db.create_all()")
-            else:
-                print("All required columns exist in substitute_request table")
-
-        # Check if the school table exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='school'")
-        if cursor.fetchone() is None:
-            # Table doesn't exist yet, it will be created by db.create_all()
-            print("school table doesn't exist yet, it will be created by db.create_all()")
-        else:
-            # Check which columns exist in the school table
-            cursor.execute("PRAGMA table_info(school)")
-            columns_info = cursor.fetchall()
-            columns = [column[1] for column in columns_info]
-            print(f"Existing columns in school: {columns}")
-
-            # Check if all required columns exist
-            required_columns = ['id', 'name', 'code', 'level1_admin_id']
-            missing_columns = [col for col in required_columns if col not in columns]
-
-            if missing_columns:
-                print(f"Missing columns in school table: {missing_columns}")
-
-                # If 'level1_admin_id' column is missing, try to add it
-                if 'level1_admin_id' in missing_columns:
-                    try:
-                        print("Adding level1_admin_id column...")
-                        cursor.execute("ALTER TABLE school ADD COLUMN level1_admin_id INTEGER")
-                        conn.commit()
-                        print("Added level1_admin_id column to school table")
-                        missing_columns.remove('level1_admin_id')
-                    except sqlite3.OperationalError as e:
-                        print(f"Error adding level1_admin_id column: {e}")
-
-                # If there are still missing columns that couldn't be added, drop and recreate the table
-                if missing_columns:
-                    print(f"Still missing columns: {missing_columns}. Will drop and recreate the table.")
-
-                    # Backup existing data
-                    cursor.execute("CREATE TABLE IF NOT EXISTS school_backup AS SELECT * FROM school")
-
-                    # Drop the table
-                    cursor.execute("DROP TABLE school")
-
-                    conn.commit()
-                    print("Dropped school table. It will be recreated by db.create_all()")
-            else:
-                print("All required columns exist in school table")
-
-        # SCHEMA MIGRATION: Handle the transition from campus field to school_id
-        
-        # First, ensure all tables exist by calling db.create_all()
-        conn.close()
-        with app.app_context():
-            db.create_all()
-        
-        # Reconnect to the database
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        # Check if the user table has the campus column
-        cursor.execute("PRAGMA table_info(user)")
-        columns_info = cursor.fetchall()
-        columns = [column[1] for column in columns_info]
-        
-        if 'campus' in columns:
-            print("Found campus column in user table")
-            
-            # Check if the user table has the school_id column
-            if 'school_id' not in columns:
-                try:
-                    print("Adding school_id column to user table...")
-                    cursor.execute("ALTER TABLE user ADD COLUMN school_id INTEGER")
-                    conn.commit()
-                    print("Added school_id column to user table")
-                except sqlite3.OperationalError as e:
-                    print(f"Error adding school_id column: {e}")
-                    conn.close()
-                    return
-            
-            # Get all unique campus values from the user table
-            cursor.execute("SELECT DISTINCT campus FROM user WHERE campus IS NOT NULL AND campus != ''")
-            unique_campuses = cursor.fetchall()
-            
-            if unique_campuses:
-                print(f"Found {len(unique_campuses)} unique campus values")
-                
-                # Create a mapping of campus codes to school names
-                campus_to_name = {
-                    'AUES': 'AUES Elementary School',
-                    'PAHS': 'PAHS High School',
-                    'SCHS': 'SCHS High School',
-                    'PCC': 'PCC School',
-                    'MAINTENANCE': 'Maintenance Department',
-                    'CAFETERIA': 'Cafeteria Department',
-                    'TRANSPORTATION': 'Transportation Department',
-                    'DO': 'District Office'
-                }
-                
-                # Process each unique campus
-                for (campus,) in unique_campuses:
-                    if campus:
-                        campus_code = campus.strip().upper()
-                        school_name = campus_to_name.get(campus_code, f"{campus_code} School")
-                        
-                        # Check if this school already exists in the database
-                        cursor.execute("SELECT id FROM school WHERE code = ?", (campus_code,))
-                        existing_school = cursor.fetchone()
-                        
-                        if existing_school:
-                            school_id = existing_school[0]
-                            print(f"School {campus_code} already exists with ID {school_id}")
-                        else:
-                            # Insert the new school
-                            cursor.execute("INSERT INTO school (name, code) VALUES (?, ?)", (school_name, campus_code))
-                            conn.commit()
-                            
-                            # Get the ID of the newly inserted school
-                            cursor.execute("SELECT id FROM school WHERE code = ?", (campus_code,))
-                            school_id = cursor.fetchone()[0]
-                            print(f"Created new school {campus_code} with ID {school_id}")
-                        
-                        # Update users with this campus to use the new school_id
-                        cursor.execute("UPDATE user SET school_id = ? WHERE campus = ?", (school_id, campus))
-                        conn.commit()
-                        print(f"Updated users with campus {campus} to use school_id {school_id}")
-                
-                print("Migration from campus to school_id completed successfully")
-            else:
-                print("No unique campus values found, no migration needed")
-        else:
-            print("Campus column not found in user table, no migration needed")
-        
-        conn.close()
-    except Exception as e:
-        print(f"Error updating database schema: {e}")
-        import traceback
-        traceback.print_exc()
-
-# Initialize the database and ensure all tables and columns are created
+# Initialize the database
 with app.app_context():
-    # First create all tables based on models
-    db.create_all()
-    print("All database tables created based on models")
+    # Note: Manual schema updates have been removed.
+    # All schema changes are now handled through Alembic migrations.
+    # Run 'flask db upgrade' to apply any pending migrations.
     
-    # Then update schema for any specific migrations
-    update_database_schema()  # Update the database schema if needed
-    
-    # Finally seed the database with initial data
+    # Seed the database with initial data
     seed_database()  # Seed the database with default data
 
 
@@ -405,19 +171,47 @@ def get_logged_in_user():
         return User.query.filter_by(email=session['user_info']['email']).first()
     except sqlalchemy.exc.OperationalError as e:
         # Handle database operational errors (like missing columns)
-        print(f"[Error] Database operational error in get_logged_in_user: {e}")
+        logger.error(f"Database operational error in get_logged_in_user: {e}")
         flash("A database error occurred. Please contact the administrator.")
         return None
     except sqlalchemy.exc.SQLAlchemyError as e:
         # Handle other SQLAlchemy errors
-        print(f"[Error] Database error in get_logged_in_user: {e}")
+        logger.error(f"Database error in get_logged_in_user: {e}")
         flash("A database error occurred. Please contact the administrator.")
         return None
     except Exception as e:
         # Handle any other unexpected errors
-        print(f"[Error] Unexpected error in get_logged_in_user: {e}")
+        logger.error(f"Unexpected error in get_logged_in_user: {e}")
         flash("An unexpected error occurred. Please contact the administrator.")
         return None
+
+
+def filter_by_organization(query, model=None):
+    """
+    Filter a query by the current user's organization.
+    
+    Args:
+        query: The SQLAlchemy query to filter
+        model: Optional model class to use for the filter (if not provided, it's inferred from the query)
+        
+    Returns:
+        The filtered query
+    """
+    user = get_logged_in_user()
+    if not user or not user.organization_id:
+        return query  # Return unfiltered query if no user or organization
+    
+    # If model is not provided, try to infer it from the query
+    if not model:
+        # This assumes the query is for a single model
+        # For more complex queries with joins, the model should be provided
+        model = query.column_descriptions[0]['entity']
+    
+    # Add organization filter if the model has organization_id
+    if hasattr(model, 'organization_id'):
+        return query.filter(model.organization_id == user.organization_id)
+    
+    return query  # Return unfiltered query if model doesn't have organization_id
 
 
 def is_authenticated(required_role=None):
@@ -454,6 +248,7 @@ def index():
 
 
 @app.route('/login')
+@limiter.limit("5 per minute")
 def login():
     redirect_uri = url_for('authorized', _external=True)
     return google.authorize_redirect(redirect_uri)
@@ -469,6 +264,7 @@ def logout():
 
 
 @app.route('/login/authorized')
+@limiter.limit("5 per minute")
 def authorized():
     try:
         token = google.authorize_access_token()
@@ -491,32 +287,39 @@ def authorized():
             else:
                 role = 'teacher'
 
+            # Get the default organization (Point Arena Schools)
+            default_org = Organization.query.filter_by(name="Point Arena Schools").first()
+            
             # If user doesn't exist, create a new user
             if not user:
                 # Create new user with minimal required fields to avoid schema issues
                 new_user = User(
                     email=user_info['email'],
                     name=user_info.get('name', 'Unknown'),
-                    role=role
+                    role=role,
+                    organization_id=default_org.id if default_org else None
                 )
                 db.session.add(new_user)
                 user = new_user
+            # Ensure existing user has an organization
+            elif user.organization_id is None and default_org:
+                user.organization_id = default_org.id
             else:
                 # Update role if it's missing or if it's the old 'admin' role that needs to be migrated
                 if not user.role or (user.role == 'admin' and role in ['admin_l1', 'admin_l2']):
                     user.role = role
-                    print(f"[Debug] Updated user role from 'admin' to '{role}'")
+                    logger.debug(f"Updated user role from 'admin' to '{role}'")
 
             db.session.commit()
         except sqlalchemy.exc.OperationalError as e:
             # Handle database operational errors (like missing columns)
-            print(f"[Error] Database operational error during user creation/update: {e}")
+            logger.error(f"Database operational error during user creation/update: {e}")
             flash("A database error occurred during login. Please contact the administrator.")
             db.session.rollback()
             return redirect(url_for('index'))
         except sqlalchemy.exc.SQLAlchemyError as e:
             # Handle other SQLAlchemy errors
-            print(f"[Error] Database error during user creation/update: {e}")
+            logger.error(f"Database error during user creation/update: {e}")
             flash("A database error occurred during login. Please contact the administrator.")
             db.session.rollback()
             return redirect(url_for('index'))
@@ -524,7 +327,7 @@ def authorized():
         # Store user information in the session
         session['user_info'] = {'email': user.email, 'role': user.role}
 
-        print(f"[Debug] Role Assigned: {user.role}, Email: {user.email}")
+        logger.debug(f"Role Assigned: {user.role}, Email: {user.email}")
 
         # Redirect to the correct dashboard based on role
         if user.role in ['admin_l1', 'admin_l2']:
@@ -536,19 +339,19 @@ def authorized():
 
     except ValueError as e:
         flash('Invalid response from authentication server')
-        print(f"[Error] OAuth value error: {e}")
+        logger.error(f"OAuth value error: {e}")
         return redirect(url_for('index'))
     except KeyError as e:
         flash('Missing information in authentication response')
-        print(f"[Error] Missing key in OAuth response: {e}")
+        logger.error(f"Missing key in OAuth response: {e}")
         return redirect(url_for('index'))
     except sqlalchemy.exc.SQLAlchemyError as e:
         flash('Database error during login')
-        print(f"[Error] Database error: {e}")
+        logger.error(f"Database error: {e}")
         return redirect(url_for('index'))
     except Exception as e:
         flash('Error during login')
-        print(f"[Error] Login failed: {e}, User Info: {session.get('user_info', {})}")
+        logger.error(f"Login failed: {e}, User Info: {session.get('user_info', {})}")
         return redirect(url_for('index'))
 
 
@@ -686,7 +489,7 @@ def edit_profile(user_id):
     # Fetch all grades, subjects, and schools for the form
     grades = Grade.query.order_by(Grade.id.asc()).all()
     subjects = Subject.query.order_by(Subject.id.asc()).all()
-    schools = School.query.order_by(School.name.asc()).all()
+    schools = filter_by_organization(School.query, School).order_by(School.name.asc()).all()
 
     if request.method == 'POST':
         # Update user details
@@ -732,7 +535,7 @@ def dashboard():
     if not logged_in_user:  # Redirect if user is not logged in
         return redirect(url_for('index'))
     past_bookings = (
-        SubstituteRequest.query
+        filter_by_organization(SubstituteRequest.query, SubstituteRequest)
         .filter_by(teacher_id=logged_in_user.id)
         .order_by(SubstituteRequest.date.desc())
         .all()
@@ -799,7 +602,7 @@ def api_unavailability():
         
         except Exception as e:
             db.session.rollback()
-            print(f"Error saving unavailability: {e}")
+            logger.error(f"Error saving unavailability: {e}")
             return jsonify({"error": "Error saving unavailability"}), 500
 
 
@@ -826,7 +629,7 @@ def api_delete_unavailability(unavailability_id):
     
     except Exception as e:
         db.session.rollback()
-        print(f"Error deleting unavailability: {e}")
+        logger.error(f"Error deleting unavailability: {e}")
         return jsonify({"error": "Error deleting unavailability"}), 500
 
 
@@ -965,7 +768,16 @@ def admin_dashboard():
 
     # If no search parameters are provided, separate by recent/older
     if not (search_keyword or search_date or search_status):
-        cutoff_date = datetime.utcnow() - timedelta(days=15)
+        # Import the utility function for getting current time in timezone
+        from time_utils import get_current_time_in_timezone
+        
+        # Get the user's timezone or default to UTC
+        user_timezone = logged_in_user.timezone if hasattr(logged_in_user, 'timezone') else 'UTC'
+        
+        # Get current time in user's timezone and calculate cutoff date
+        current_time = get_current_time_in_timezone(user_timezone)
+        cutoff_date = (current_time - timedelta(days=15)).date()
+        
         recent_requests = base_query.filter(
             SubstituteRequest.date >= cutoff_date
         ).order_by(SubstituteRequest.date.asc()).all()
@@ -1003,6 +815,7 @@ def admin_request_form():
 
 @app.route('/admin_create_request', methods=['POST'])
 @requires_role('admin')
+@limiter.limit("10 per minute")
 def admin_create_request():
     """Handle admin creation of substitute requests."""
 
@@ -1018,7 +831,9 @@ def admin_create_request():
         
         # Validate that the date and time are in the future
         from helpers import is_future_date_time
-        if not is_future_date_time(date, time):
+        # Get the logged-in user for timezone-aware validation
+        logged_in_user = User.query.filter_by(id=session.get('user_id')).first()
+        if not is_future_date_time(date, time, logged_in_user):
             flash('Error: Substitute requests can only be created for future dates and times.')
             return redirect(url_for('admin_request_form'))
 
@@ -1055,9 +870,12 @@ def admin_create_request():
             teacher_school_id = teacher.schools[0].id
             
         # Create and save substitute request
+        # Parse the date and ensure it's stored as a date object (not datetime)
+        parsed_date = datetime.strptime(date, '%m/%d/%Y').date()
+        
         sub_request = SubstituteRequest(
             teacher_id=teacher_id,
-            date=datetime.strptime(date, '%m/%d/%Y'),
+            date=parsed_date,
             time=time,
             details=details.strip(),
             reason=reason,
@@ -1074,7 +892,9 @@ def admin_create_request():
 
         # Use the helper function to filter eligible substitutes at the database level
         from helpers import filter_eligible_substitutes
-        eligible_substitutes = filter_eligible_substitutes(teacher)
+        # Convert date string to datetime.date object for availability checking
+        request_date = datetime.strptime(date, '%m/%d/%Y').date()
+        eligible_substitutes = filter_eligible_substitutes(teacher, request_date=request_date, request_time=time, school_id=teacher_school_id)
 
         # Get grade and subject names
         grade_name = "Not specified"
@@ -1116,20 +936,31 @@ def admin_create_request():
         📚 Grade: {grade_name}
         📖 Subject: {subject_name}
         📌 Details: {details or 'No additional details provided'}"""
-        # Send to admins in Config.ADMIN_EMAILS (for backward compatibility)
-        for admin_email in Config.ADMIN_EMAILS:
-            send_email(admin_subject, admin_email, admin_email_body)
             
-        # Send to all level 2 admins
-        level2_admins = User.query.filter_by(role='admin_l2').all()
-        for admin in level2_admins:
-            send_email(admin_subject, admin.email, admin_email_body)
+        # Send to level 2 admins associated with the same school as the request
+        # This ensures notifications are only sent to admins who are responsible for the specific school
+        # If no school is specified, no notifications are sent
+        if teacher_school_id:
+            # Filter level 2 admins by school using the user_schools association table
+            level2_admins = User.query.filter_by(role='admin_l2').join(
+                user_schools, User.id == user_schools.c.user_id
+            ).filter(
+                user_schools.c.school_id == teacher_school_id
+            ).all()
+            
+            for admin in level2_admins:
+                send_email(admin_subject, admin.email, admin_email_body)
 
         # Send SMS notification to admin
         admin_sms_body = f"New sub request: Teacher {teacher.name}, Date {date}, Time {time}, Grade {grade_name}, Subject {subject_name}, Reason {reason or 'Not specified'}"
-        if hasattr(Config, 'ADMIN_PHONE_NUMBERS'):
-            for admin_phone in Config.ADMIN_PHONE_NUMBERS:
-                send_sms(admin_phone, admin_sms_body)
+        
+        # Use the same level 2 admins filtered by school as for email notifications
+        # If no school is specified, no SMS notifications are sent
+        if teacher_school_id and 'level2_admins' in locals():
+            # We already have level2_admins filtered by school from the email notification section
+            for admin in level2_admins:
+                if admin.phone:  # Only send if admin has a phone number
+                    send_sms(admin.phone, admin_sms_body)
 
         # Send email notification to teacher
         teacher_subject = "Your Substitute Request Has Been Created"
@@ -1153,7 +984,7 @@ def admin_create_request():
 
     except Exception as e:
         flash('An error occurred while creating the request.')
-        print(f"Error: {e}")
+        logger.error(f"Error: {e}")
 
     return redirect(url_for('admin_dashboard'))
 
@@ -1222,11 +1053,11 @@ def request_form_and_submit():
                     db.session.commit()
                 except ValueError as e:
                     flash('Invalid date format. Please use MM/DD/YYYY format.')
-                    print(f"Date parsing error: {e}")
+                    logger.error(f"Date parsing error: {e}")
                     return redirect(url_for('request_form_and_submit'))
                 except sqlalchemy.exc.SQLAlchemyError as e:
                     flash('Database error while saving request.')
-                    print(f"Database error: {e}")
+                    logger.error(f"Database error: {e}")
                     return redirect(url_for('dashboard'))
 
                 # **Generate dynamic link**
@@ -1234,7 +1065,9 @@ def request_form_and_submit():
 
                 # Use the helper function to filter eligible substitutes at the database level
                 from helpers import filter_eligible_substitutes
-                eligible_substitutes = filter_eligible_substitutes(teacher)
+                # Convert date string to datetime.date object for availability checking
+                request_date = datetime.strptime(date, '%m/%d/%Y').date()
+                eligible_substitutes = filter_eligible_substitutes(teacher, request_date=request_date, request_time=time, school_id=teacher_school_id)
 
                 # **Send notification with link to eligible substitutes**
                 subject = "New Substitute Request Available"
@@ -1273,23 +1106,31 @@ def request_form_and_submit():
                 📖 Subject: {subject_name}
                 🔍 Reason: {reason or 'Not specified'}
                 📌 Details: {details or 'No additional details provided'}"""
-                # Send to admins in Config.ADMIN_EMAILS (for backward compatibility)
-                for admin_email in Config.ADMIN_EMAILS:
-                    if not send_email(admin_subject, admin_email, admin_email_body):
-                        notification_errors.append(f"Failed to send email to admin {admin_email}")
                 
-                # Send to all level 2 admins
-                level2_admins = User.query.filter_by(role='admin_l2').all()
-                for admin in level2_admins:
-                    if not send_email(admin_subject, admin.email, admin_email_body):
-                        notification_errors.append(f"Failed to send email to admin {admin.email}")
-
-                # Send SMS notification to admin
-                admin_sms_body = f"New sub request: Teacher {teacher.name}, Date {date}, Time {time}, Grade {grade_name}, Subject {subject_name}, Reason {reason or 'Not specified'}"
-                if hasattr(Config, 'ADMIN_PHONE_NUMBERS'):
-                    for admin_phone in Config.ADMIN_PHONE_NUMBERS:
-                        if not send_sms(admin_phone, admin_sms_body):
-                            notification_errors.append(f"Failed to send SMS to admin {admin_phone}")
+                # Send to level 2 admins associated with the same school as the request
+                # This ensures notifications are only sent to admins who are responsible for the specific school
+                # If no school is specified, no notifications are sent
+                teacher_school_id = None
+                if teacher and teacher.schools:
+                    teacher_school_id = teacher.schools[0].id
+                
+                if teacher_school_id:
+                    # Filter level 2 admins by school using the user_schools association table
+                    level2_admins = User.query.filter_by(role='admin_l2').join(
+                        user_schools, User.id == user_schools.c.user_id
+                    ).filter(
+                        user_schools.c.school_id == teacher_school_id
+                    ).all()
+                    
+                    for admin in level2_admins:
+                        if not send_email(admin_subject, admin.email, admin_email_body):
+                            notification_errors.append(f"Failed to send email to admin {admin.email}")
+                        
+                        # Send SMS notification to admin if they have a phone number
+                        if admin.phone:
+                            admin_sms_body = f"New sub request: Teacher {teacher.name}, Date {date}, Time {time}, Grade {grade_name}, Subject {subject_name}, Reason {reason or 'Not specified'}"
+                            if not send_sms(admin.phone, admin_sms_body):
+                                notification_errors.append(f"Failed to send SMS to admin {admin.phone}")
 
                 # Send email notification to teacher
                 teacher_subject = "Your Substitute Request Has Been Created"
@@ -1312,7 +1153,7 @@ def request_form_and_submit():
                         notification_errors.append(f"Failed to send SMS to teacher {teacher.phone}")
 
                 if notification_errors:
-                    print("Notification errors:", notification_errors)
+                    logger.warning(f"Notification errors: {notification_errors}")
                     flash('Substitute request submitted successfully, but some notifications failed to send.')
                 else:
                     flash('Substitute request submitted successfully! Notification sent to matching substitutes.')
@@ -1321,11 +1162,11 @@ def request_form_and_submit():
 
         except KeyError as e:
             flash('Missing required field in form submission.')
-            print(f"Form field error: {e}")
+            logger.error(f"Form field error: {e}")
             return redirect(url_for('request_form_and_submit'))
         except Exception as e:
             flash('An error occurred while submitting the request.')
-            print(f"Unexpected error: {e}")
+            logger.error(f"Unexpected error: {e}")
 
         return redirect(url_for('dashboard'))
 
@@ -1363,10 +1204,25 @@ def view_sub_request(token):
         # Import helper functions for email templates
         from helpers import generate_admin_sub_filled_email, generate_teacher_sub_filled_email, generate_substitute_confirmation_email
 
-        # 1. Email to admin
+        # 1. Email to level 2 admins associated with the same school as the request
+        # This ensures notifications are only sent to admins who are responsible for the specific school
+        # If no school is specified, no notifications are sent
         admin_subject, admin_email_body = generate_admin_sub_filled_email(teacher, sub_request, logged_in_user)
-        for admin_email in Config.ADMIN_EMAILS:
-            send_email(admin_subject, admin_email, admin_email_body)
+        
+        # Get the school ID from the substitute request
+        school_id = sub_request.school_id
+        
+        if school_id:
+            # Filter level 2 admins by school using the user_schools association table
+            # This targets notifications only to admins associated with this school
+            level2_admins = User.query.filter_by(role='admin_l2').join(
+                user_schools, User.id == user_schools.c.user_id
+            ).filter(
+                user_schools.c.school_id == school_id
+            ).all()
+            
+            for admin in level2_admins:
+                send_email(admin_subject, admin.email, admin_email_body)
 
         # 2. Email to teacher
         teacher_subject, teacher_email_body = generate_teacher_sub_filled_email(sub_request, logged_in_user)
@@ -1399,11 +1255,11 @@ def view_sub_request(token):
 def manage_admins():
     """Route for tech coordinators to manage level 2 admins."""
     
-    # Get all level 2 admins
-    admins = User.query.filter_by(role='admin_l2').order_by(User.name).all()
+    # Get all level 2 admins (filtered by organization)
+    admins = filter_by_organization(User.query, User).filter_by(role='admin_l2').order_by(User.name).all()
     
-    # Fetch all schools from the database
-    schools = School.query.order_by(School.name.asc()).all()
+    # Fetch schools from the database (filtered by organization)
+    schools = filter_by_organization(School.query, School).order_by(School.name.asc()).all()
     
     return render_template(
         'manage_admins.html',
@@ -1415,6 +1271,7 @@ def manage_admins():
 
 @app.route('/add_admin', methods=['POST'])
 @requires_role('admin_l1')
+@limiter.limit("10 per minute")
 def add_admin():
     """Route for tech coordinators to create level 2 admin accounts."""
     
@@ -1424,9 +1281,9 @@ def add_admin():
     phone = request.form.get('phone')
     admin_type = request.form.get('admin_type', 'front_office')  # front_office or principal
     
-    # Get selected schools
+    # Get selected schools (filtered by organization)
     school_ids = request.form.getlist('schools')  # List of selected school IDs
-    school_objs = School.query.filter(School.id.in_(school_ids)).all()
+    school_objs = filter_by_organization(School.query, School).filter(School.id.in_(school_ids)).all()
     
     # Validate required inputs
     if not name or not email:
@@ -1446,7 +1303,8 @@ def add_admin():
         email=email,
         role='admin_l2',
         phone=phone,
-        created_by=logged_in_user.id if logged_in_user else None
+        created_by=logged_in_user.id if logged_in_user else None,
+        organization_id=logged_in_user.organization_id if logged_in_user else None
     )
     
     # Assign schools to the new admin
@@ -1473,9 +1331,9 @@ def manage_users():
     sort_by = request.args.get('sort_by', 'id')
     sort_order = request.args.get('sort_order', 'asc')
 
-    # Base queries for teachers and substitutes
-    teachers_query = User.query.filter_by(role='teacher')
-    substitutes_query = User.query.filter_by(role='substitute')
+    # Base queries for teachers and substitutes (filtered by organization)
+    teachers_query = filter_by_organization(User.query, User).filter_by(role='teacher')
+    substitutes_query = filter_by_organization(User.query, User).filter_by(role='substitute')
 
     # Initialize teachers and substitutes with default values
     # in case there's an error in the sorting logic
@@ -1637,10 +1495,34 @@ def accept_sub_request(token):
     # Import helper functions for email templates
     from helpers import generate_admin_sub_filled_email, generate_teacher_sub_filled_email, generate_substitute_confirmation_email
 
-    # 1. Email to admin
+    # 1. Email to level 2 admins associated with the same school as the request
+    # This ensures notifications are only sent to admins who are responsible for the specific school
+    # If no school is specified, no notifications are sent
     admin_subject, admin_email_body = generate_admin_sub_filled_email(teacher, sub_request, logged_in_user)
-    for admin_email in Config.ADMIN_EMAILS:
-        send_email(admin_subject, admin_email, admin_email_body)
+    
+    # Get the school ID from the substitute request
+    school_id = sub_request.school_id
+    
+    # SMS notification is shorter due to character limitations
+    admin_sms_body = f"Sub position filled: {teacher.name}, {sub_request.date.strftime('%B %d, %Y')}, {sub_request.time}, filled by {logged_in_user.name}"
+    
+    if school_id:
+        # Filter level 2 admins by school using the user_schools association table
+        # This targets notifications only to admins associated with this school
+        level2_admins = User.query.filter_by(role='admin_l2').join(
+            user_schools, User.id == user_schools.c.user_id
+        ).filter(
+            user_schools.c.school_id == school_id
+        ).all()
+        
+        for admin in level2_admins:
+            # Send email notification
+            send_email(admin_subject, admin.email, admin_email_body)
+            
+            # Send SMS notification if phone number is available
+            # This replaces the hardcoded admin phone numbers from environment variables
+            if admin.phone:
+                send_sms(admin.phone, admin_sms_body)
 
     # 2. Email to teacher
     teacher_subject, teacher_email_body = generate_teacher_sub_filled_email(sub_request, logged_in_user)
@@ -1649,20 +1531,6 @@ def accept_sub_request(token):
     # 3. Email to substitute
     sub_subject, sub_email_body = generate_substitute_confirmation_email(teacher, sub_request)
     send_email(sub_subject, logged_in_user.email, sub_email_body)
-
-    # 4. Notify level 2 admins via email and SMS
-    level2_admins = User.query.filter_by(role="admin_l2").all()
-    
-    # SMS notification is shorter due to character limitations
-    admin_sms_body = f"Sub position filled: {teacher.name}, {sub_request.date.strftime('%B %d, %Y')}, {sub_request.time}, filled by {logged_in_user.name}"
-    
-    for admin in level2_admins:
-        # Send email notification
-        send_email(admin_subject, admin.email, admin_email_body)
-        
-        # Send SMS notification if phone number is available
-        if admin.phone:
-            send_sms(admin.phone, admin_sms_body)
     
     # Generate and fill absence report PDF
     try:
@@ -1677,14 +1545,15 @@ def accept_sub_request(token):
         # Fill the PDF form
         pdf_path = fill_absence_form(teacher.name, request_date, form_data)
         
-        print(f"Absence report PDF generated successfully: {pdf_path}")
+        logger.info(f"Absence report PDF generated successfully: {pdf_path}")
     except Exception as e:
-        print(f"Error generating absence report PDF: {e}")
+        logger.error(f"Error generating absence report PDF: {e}")
 
     return jsonify({"status": "success", "message": "Position accepted!"})
 
 
 @app.route('/add_user', methods=['POST'])
+@limiter.limit("10 per minute")
 def add_user():
     # Get form data
     name = request.form.get('name')
@@ -1742,6 +1611,7 @@ def add_user():
 
 
 @app.route('/edit_user/<int:user_id>', methods=['POST'])
+@limiter.limit("10 per minute")
 def edit_user(user_id):
     # Fetch the user from the database
     user = User.query.get_or_404(user_id)
@@ -1852,7 +1722,7 @@ def edit_request(request_id):
             flash('Substitute request updated successfully!')
         except Exception as e:
             flash('An error occurred while updating the request.')
-            print(f"Error: {e}")
+            logger.error(f"Error: {e}")
 
         return redirect(url_for('dashboard'))
 
@@ -1886,12 +1756,13 @@ def delete_request(request_id):
         flash('Substitute request deleted successfully!')
     except Exception as e:
         flash('An error occurred while deleting the request.')
-        print(f"Error: {e}")
+        logger.error(f"Error: {e}")
 
     return redirect(url_for('dashboard'))
 
 
 @app.route('/delete_user/<int:user_id>', methods=['POST'])
+@limiter.limit("5 per minute")
 def delete_user(user_id):
     # Ensure user is authenticated and has admin role
     if not is_authenticated(required_role='admin'):

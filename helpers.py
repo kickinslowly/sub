@@ -6,6 +6,9 @@ from functools import wraps
 from flask import redirect, url_for, flash, session
 import re
 import pytz  # For timezone handling
+import logging
+
+logger = logging.getLogger(__name__)
 
 def calculate_hours_from_time_range(time_range):
     """
@@ -116,14 +119,26 @@ def generate_substitute_confirmation_email(teacher, sub_request):
 def is_substitute_available(substitute, date, time_range=None):
     """
     Checks if a substitute is available for a specific date and time.
+    Uses TimeRange objects for proper time range comparison, including overnight ranges.
     
     :param substitute: The substitute user object
     :param date: The date to check (datetime.date object)
-    :param time_range: Optional time range to check (e.g., "08:00-12:00")
+    :param time_range: Optional time range to check (e.g., "08:00-12:00" or "08:00 AM - 12:00 PM")
     :return: True if available, False if unavailable
     """
     from models import SubstituteUnavailability
     from datetime import datetime, timedelta
+    from time_utils import TimeRange, parse_time_range
+    
+    # If no time range is specified, we're only checking for all-day unavailability
+    if time_range:
+        # Parse the requested time range into a TimeRange object
+        try:
+            request_time_range = parse_time_range(time_range)
+        except ValueError as e:
+            logger.error(f"Error parsing time range '{time_range}': {e}")
+            # If we can't parse the time range, assume the substitute is unavailable
+            return False
     
     # Check for direct date match
     unavailability = SubstituteUnavailability.query.filter_by(
@@ -138,8 +153,16 @@ def is_substitute_available(substitute, date, time_range=None):
         
         # If checking a specific time range and there's an overlap, the substitute is unavailable
         if time_range and item.time_range:
-            # Simple overlap check - this could be enhanced for more complex time comparisons
-            if time_range == item.time_range:
+            try:
+                # Parse the unavailability time range
+                item_time_range = parse_time_range(item.time_range)
+                
+                # Check for overlap
+                if request_time_range.overlaps(item_time_range):
+                    return False
+            except ValueError as e:
+                logger.error(f"Error parsing unavailability time range '{item.time_range}': {e}")
+                # If we can't parse the time range, assume there's an overlap to be safe
                 return False
     
     # Check for repeating unavailability
@@ -150,7 +173,8 @@ def is_substitute_available(substitute, date, time_range=None):
     repeating_unavailability = SubstituteUnavailability.query.filter(
         SubstituteUnavailability.user_id == substitute.id,
         SubstituteUnavailability.repeat_pattern == day_of_week,
-        (SubstituteUnavailability.repeat_until >= date) | (SubstituteUnavailability.repeat_until == None)
+        (SubstituteUnavailability.repeat_until >= date) | (SubstituteUnavailability.repeat_until == None),
+        SubstituteUnavailability.date <= date  # Only consider patterns that start on or before the requested date
     ).all()
     
     # If there's a repeating all-day unavailability for this day of week, the substitute is unavailable
@@ -160,15 +184,23 @@ def is_substitute_available(substitute, date, time_range=None):
         
         # If checking a specific time range and there's an overlap, the substitute is unavailable
         if time_range and item.time_range:
-            # Simple overlap check - this could be enhanced for more complex time comparisons
-            if time_range == item.time_range:
+            try:
+                # Parse the unavailability time range
+                item_time_range = parse_time_range(item.time_range)
+                
+                # Check for overlap
+                if request_time_range.overlaps(item_time_range):
+                    return False
+            except ValueError as e:
+                logger.error(f"Error parsing repeating unavailability time range '{item.time_range}': {e}")
+                # If we can't parse the time range, assume there's an overlap to be safe
                 return False
     
     # If we get here, the substitute is available
     return True
 
 
-def filter_eligible_substitutes(teacher, request_date=None, request_time=None, substitutes=None):
+def filter_eligible_substitutes(teacher, request_date=None, request_time=None, school_id=None, substitutes=None):
     """
     Filters substitutes based on matching grades and subjects with the teacher.
     Uses SQLAlchemy queries to filter at the database level for better performance.
@@ -179,12 +211,13 @@ def filter_eligible_substitutes(teacher, request_date=None, request_time=None, s
        the substitute does not get the request.
     3. If the substitute has specified a subject and the teacher's subject is specific and doesn't match, 
        the substitute does not get the request.
-    4. If the substitute and teacher share at least one school, they match.
+    4. If a specific school_id is provided, only substitutes associated with that school will match.
     5. If a substitute has marked themselves as unavailable for the date/time, they are excluded.
 
     :param teacher: The teacher object
     :param request_date: The date of the request (datetime.date object)
     :param request_time: The time range of the request (e.g., "08:00-12:00")
+    :param school_id: The specific school ID for the substitute request
     :param substitutes: Optional parameter (kept for backward compatibility)
     :return: Filtered list of eligible substitutes
     """
@@ -199,7 +232,6 @@ def filter_eligible_substitutes(teacher, request_date=None, request_time=None, s
     # Get teacher's grade, subject, and school IDs
     teacher_grade_ids = [grade.id for grade in teacher.grades]
     teacher_subject_ids = [subject.id for subject in teacher.subjects]
-    teacher_school_ids = [school.id for school in teacher.schools]
 
     # Start with a base query for substitute users
     query = db.session.query(User).filter(User.role == 'substitute')
@@ -208,7 +240,9 @@ def filter_eligible_substitutes(teacher, request_date=None, request_time=None, s
     all_grade_and_subject_query = (
         db.session.query(User.id)
         .join(user_grades)
+        .join(Grade, user_grades.c.grade_id == Grade.id)
         .join(user_subjects)
+        .join(Subject, user_subjects.c.subject_id == Subject.id)
         .filter(User.role == 'substitute')
         .filter(Grade.id == ALL_GRADE_ID)
         .filter(Subject.id == ALL_SUBJECT_ID)
@@ -218,6 +252,7 @@ def filter_eligible_substitutes(teacher, request_date=None, request_time=None, s
     grade_match_query = (
         db.session.query(User.id)
         .join(user_grades)
+        .join(Grade, user_grades.c.grade_id == Grade.id)
         .filter(User.role == 'substitute')
         .filter(or_(
             Grade.id == ALL_GRADE_ID,
@@ -229,6 +264,7 @@ def filter_eligible_substitutes(teacher, request_date=None, request_time=None, s
     subject_match_query = (
         db.session.query(User.id)
         .join(user_subjects)
+        .join(Subject, user_subjects.c.subject_id == Subject.id)
         .filter(User.role == 'substitute')
         .filter(or_(
             Subject.id == ALL_SUBJECT_ID,
@@ -236,29 +272,29 @@ def filter_eligible_substitutes(teacher, request_date=None, request_time=None, s
         ))
     )
 
-    # School matching is more complex due to the empty list rules
-    if not teacher_school_ids:
-        # If teacher has no schools, all substitutes match for schools
-        school_match_query = db.session.query(User.id).filter(User.role == 'substitute')
-    else:
-        # Create a query for school matching
-        # Either substitute has no schools, or there's an overlap in schools
+    # School matching based on the specific school_id
+    if school_id:
+        # Only match substitutes associated with the specific school
         school_match_query = (
             db.session.query(User.id)
-            .outerjoin(user_schools)
+            .join(user_schools)
+            .join(School)
             .filter(User.role == 'substitute')
-            .filter(or_(
-                ~User.schools.any(),  # No schools assigned to substitute
-                School.id.in_(teacher_school_ids)
-            ))
+            .filter(School.id == school_id)
         )
+    else:
+        # If no school_id is provided, match all substitutes (backward compatibility)
+        school_match_query = db.session.query(User.id).filter(User.role == 'substitute')
 
     # Combine the queries:
-    # 1. Users with "All" grade AND "All" subject
+    # 1. Users with "All" grade AND "All" subject AND matching school
     # 2. Users with matching grade AND matching subject AND matching school
     eligible_substitutes = (
         query.filter(or_(
-            User.id.in_(all_grade_and_subject_query),
+            and_(
+                User.id.in_(all_grade_and_subject_query),
+                User.id.in_(school_match_query)
+            ),
             and_(
                 User.id.in_(grade_match_query),
                 User.id.in_(subject_match_query),
@@ -286,13 +322,18 @@ def send_email(subject, recipient, body):
     :param recipient: A single email address or a list of addresses
     :param body: Body content of the email
     """
+    # Validate recipient is not empty
+    if not recipient or not isinstance(recipient, str) or not recipient.strip():
+        logger.warning("Attempted to send email with empty recipient")
+        return False
+        
     try:
         msg = Message(subject, sender=Config.MAIL_USERNAME, recipients=[recipient])
         msg.body = body
         mail.send(msg)
         return True
     except Exception as e:
-        print(f"Failed to send email to {recipient}. Error: {e}")
+        logger.error(f"Failed to send email to {recipient}. Error: {e}")
         return False
 
 
@@ -305,20 +346,22 @@ def send_sms(to_number, body):
     """
     # Check if the phone number is valid
     if not to_number or not isinstance(to_number, str) or not to_number.strip():
-        print("Invalid phone number provided")
+        logger.warning("Invalid phone number provided")
         return False
 
     try:
-        # Use twilio_initialized from extensions.py
+        # Use twilio_initialized and twilio_client from extensions.py
         from extensions import twilio_initialized, twilio_client
 
         # Check if Twilio is properly initialized
         if not twilio_initialized:
-            print("Twilio is not properly initialized. SMS will not be sent.")
+            logger.warning("Twilio is not properly initialized. SMS will not be sent.")
+            # Log the message that would have been sent for debugging
+            logger.info(f"SMS would have been sent to {to_number}: {body}")
             return False
 
         if twilio_client is None:
-            print("Twilio client not initialized")
+            logger.warning("Twilio client not initialized")
             return False
 
         # Format the phone number if it doesn't start with +
@@ -331,30 +374,37 @@ def send_sms(to_number, body):
             from_=Config.TWILIO_PHONE_NUMBER,
             to=formatted_number
         )
-        print(f"SMS sent to {formatted_number}, SID: {message.sid}")
+        logger.info(f"SMS sent to {formatted_number}, SID: {message.sid}")
         return True
     except ImportError:
-        print("Could not import twilio_initialized flag. SMS will not be sent.")
+        logger.error("Could not import twilio_enabled flag. SMS will not be sent.")
         return False
     except Exception as e:
-        print(f"Failed to send SMS to {to_number}. Error: {e}")
+        logger.error(f"Failed to send SMS to {to_number}. Error: {e}")
         return False
 
 
-def is_future_date_time(date_str, time_range):
+def is_future_date_time(date_str, time_range, user=None):
     """
-    Validates if a date and time are in the future.
+    Validates if a date and time are in the future, using the user's timezone if provided.
     
     :param date_str: Date string in 'MM/DD/YYYY' format
     :param time_range: Time range string in 'HH:MM AM/PM - HH:MM AM/PM' format
+    :param user: User object with timezone information (optional)
     :return: True if the date and time are in the future, False otherwise
     """
     try:
+        from time_utils import get_current_time_in_timezone, localize_datetime
+        
         # Parse the date string
         request_date = datetime.strptime(date_str, '%m/%d/%Y').date()
         
-        # Get the current date
-        current_date = datetime.now().date()
+        # Get the user's timezone or default to UTC
+        timezone_str = user.timezone if user and hasattr(user, 'timezone') else 'UTC'
+        
+        # Get the current datetime in the user's timezone
+        current_datetime = get_current_time_in_timezone(timezone_str)
+        current_date = current_datetime.date()
         
         # If the date is in the past, return False
         if request_date < current_date:
@@ -377,15 +427,15 @@ def is_future_date_time(date_str, time_range):
             start_time.time()
         )
         
-        # Get the current datetime
-        current_datetime = datetime.now()
+        # Localize the request datetime to the user's timezone
+        request_datetime = localize_datetime(request_datetime, timezone_str)
         
         # Return True if the request datetime is in the future
         return request_datetime > current_datetime
     
     except (ValueError, IndexError) as e:
         # If there's an error parsing the date or time, log it and return False
-        print(f"Error validating date/time: {e}")
+        logger.error(f"Error validating date/time: {e}")
         return False
 
 
@@ -452,6 +502,10 @@ def convert_utc_to_local(utc_dt, timezone_str='UTC'):
     if not utc_dt:
         return None
     
+    # If timezone_str is None, use UTC as default
+    if timezone_str is None:
+        timezone_str = 'UTC'
+    
     try:
         # Ensure the datetime is timezone-aware and in UTC
         if utc_dt.tzinfo is None:
@@ -463,7 +517,7 @@ def convert_utc_to_local(utc_dt, timezone_str='UTC'):
         
         return local_dt
     except Exception as e:
-        print(f"Error converting timezone: {e}")
+        logger.error(f"Error converting timezone: {timezone_str}")
         # Return the original datetime if there's an error
         return utc_dt
 
@@ -482,7 +536,7 @@ def format_datetime(dt, format_str='%B %d, %Y at %I:%M %p'):
     try:
         return dt.strftime(format_str)
     except Exception as e:
-        print(f"Error formatting datetime: {e}")
+        logger.error(f"Error formatting datetime: {e}")
         return str(dt)
 
 

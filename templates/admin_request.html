@@ -179,6 +179,7 @@
     <div class="container">
         <h1>Create Substitute Request</h1>
         <form id="adminSubRequestForm" method="POST" action="/admin_create_request" onsubmit="handleFormSubmit(event)">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="form-group">
                 <label for="teacher_id">Teacher:</label>
                 <select id="teacher_id" name="teacher_id" class="form-select" required>
