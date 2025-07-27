@@ -208,6 +208,10 @@
                         <input type="text" id="timeEnd" name="timeEnd" class="form-control flatpickr-time" placeholder="End Time" required>
                     </div>
                 </div>
+                <div style="margin-top: 10px;">
+                    <input type="checkbox" id="standardSchoolDay" style="margin-right: 5px;">
+                    <label for="standardSchoolDay">Standard School Day</label>
+                </div>
                 <input type="hidden" id="timeRange" name="time">
             </div>
 
@@ -267,10 +271,26 @@
                 allowInput: true
             };
 
-            // Initialize date picker
-            flatpickr("#date", {
+            // Initialize date picker with minDate option to prevent selecting past dates
+            // and disable weekends (Saturday and Sunday)
+            const datePicker = flatpickr("#date", {
                 dateFormat: "m/d/Y",
-                minDate: "today"
+                minDate: "today",
+                disable: [
+                    function(date) {
+                        // Return true to disable weekends (Saturday is 6, Sunday is 0)
+                        return (date.getDay() === 0 || date.getDay() === 6);
+                    }
+                ],
+                locale: {
+                    firstDayOfWeek: 1 // Start week on Monday
+                },
+                onChange: function(selectedDates, dateStr) {
+                    // If standard school day is checked, update times based on day of week
+                    if (document.getElementById('standardSchoolDay').checked) {
+                        setStandardSchoolDayTimes();
+                    }
+                }
             });
 
             // Initialize start time picker
@@ -300,6 +320,36 @@
                     document.getElementById('timeRange').value = `${startTime} - ${endTime}`;
                 }
             }
+            
+            // Function to set standard school day times based on day of week
+            function setStandardSchoolDayTimes() {
+                const dateInput = document.getElementById('date').value;
+                if (!dateInput) return;
+                
+                // Parse the date to get the day of week
+                const date = new Date(dateInput);
+                const dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
+                
+                // Set times based on day of week
+                // Wednesday (3) has different times than other weekdays
+                if (dayOfWeek === 3) { // Wednesday
+                    startTimePicker.setDate("8:20 AM");
+                    endTimePicker.setDate("1:35 PM");
+                } else { // Monday, Tuesday, Thursday, Friday
+                    startTimePicker.setDate("8:20 AM");
+                    endTimePicker.setDate("3:15 PM");
+                }
+                
+                // Update the hidden time range field
+                updateTimeRange();
+            }
+            
+            // Add event listener to the standard school day checkbox
+            document.getElementById('standardSchoolDay').addEventListener('change', function() {
+                if (this.checked) {
+                    setStandardSchoolDayTimes();
+                }
+            });
 
             // Initialize with default values
             setTimeout(updateTimeRange, 500);

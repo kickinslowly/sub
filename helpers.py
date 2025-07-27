@@ -63,57 +63,12 @@ def calculate_total_hours_out(requests):
     return round(total_hours, 2)
 
 
-def generate_admin_sub_filled_email(teacher, sub_request, substitute):
-    """
-    Generates standardized email content for admins when a substitute request is filled.
-    """
-    subject = "Substitute Position Filled"
-    body = f"""A substitute position has been filled:
-    👨‍🏫 Teacher: {teacher.name}
-    📅 Date: {sub_request.date.strftime('%B %d, %Y')}
-    ⏰ Time: {sub_request.time}
-    ✅ Filled by: {substitute.name} ({substitute.email})
-    🔍 Reason: {sub_request.reason or 'Not specified'}
-    📌 Details: {sub_request.details or 'No additional details provided'}
-    📚 Grade: {getattr(sub_request.grade, 'name', 'Not specified')}
-    📖 Subject: {getattr(sub_request.subject, 'name', 'Not specified')}"""
-
-    return subject, body
-
-
-def generate_teacher_sub_filled_email(sub_request, substitute):
-    """
-    Generates standardized email content for teachers when their substitute request is filled.
-    """
-    subject = "Your Substitute Request Has Been Filled"
-    body = f"""Good news! Your substitute request has been filled:
-    📅 Date: {sub_request.date.strftime('%B %d, %Y')}
-    ⏰ Time: {sub_request.time}
-    🔍 Reason: {sub_request.reason or 'Not specified'}
-    ✅ Filled by: {substitute.name}
-    📧 Contact: {substitute.email}
-    📚 Grade: {getattr(sub_request.grade, 'name', 'Not specified')}
-    📖 Subject: {getattr(sub_request.subject, 'name', 'Not specified')}"""
-
-    return subject, body
-
-
-def generate_substitute_confirmation_email(teacher, sub_request):
-    """
-    Generates standardized email content for substitutes confirming their acceptance.
-    """
-    subject = "Substitute Position Confirmation"
-    body = f"""Thank you for accepting the substitute position:
-    👨‍🏫 Teacher: {teacher.name}
-    📅 Date: {sub_request.date.strftime('%B %d, %Y')}
-    ⏰ Time: {sub_request.time}
-    🔍 Reason: {sub_request.reason or 'Not specified'}
-    📌 Details: {sub_request.details or 'No additional details provided'}
-    📚 Grade: {getattr(sub_request.grade, 'name', 'Not specified')}
-    📖 Subject: {getattr(sub_request.subject, 'name', 'Not specified')}
-    ⚠️ Important: Please report to the front office at least 10 minutes before the scheduled time."""
-
-    return subject, body
+# Import email templates from message_templates.py
+from message_templates import (
+    generate_admin_sub_filled_email,
+    generate_teacher_sub_filled_email,
+    generate_substitute_confirmation_email
+)
 
 
 def is_substitute_available(substitute, date, time_range=None):
@@ -321,20 +276,55 @@ def send_email(subject, recipient, body):
     :param subject: Subject of the email
     :param recipient: A single email address or a list of addresses
     :param body: Body content of the email
+    :return: True if successful, False otherwise
     """
     # Validate recipient is not empty
     if not recipient or not isinstance(recipient, str) or not recipient.strip():
         logger.warning("Attempted to send email with empty recipient")
         return False
+    
+    # Validate mail configuration
+    if not Config.MAIL_USERNAME or not Config.MAIL_PASSWORD:
+        logger.error("Mail configuration is incomplete. MAIL_USERNAME and MAIL_PASSWORD must be set.")
+        return False
         
     try:
+        # Create the message object
         msg = Message(subject, sender=Config.MAIL_USERNAME, recipients=[recipient])
         msg.body = body
-        mail.send(msg)
+        
+        # Import the mail object here to avoid circular imports
+        from extensions import mail
+        
+        # Import the Flask app to create an application context
+        # This is needed when sending emails from background threads
+        from app import app
+        
+        # Create an application context before sending the email
+        with app.app_context():
+            # Send the email
+            mail.send(msg)
+            # Log successful email sending
+            logger.info(f"Email sent to {recipient}, Subject: {subject}")
         return True
+    except ImportError as e:
+        logger.error(f"Failed to import required modules for email sending: {e}")
+        return False
     except Exception as e:
         logger.error(f"Failed to send email to {recipient}. Error: {e}")
+        # Log more detailed error information for debugging
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return False
+
+
+# Import SMS templates from message_templates.py
+from message_templates import (
+    generate_substitute_notification_sms,
+    generate_admin_notification_sms,
+    generate_teacher_confirmation_sms,
+    generate_admin_sub_filled_sms
+)
 
 
 def send_sms(to_number, body):
@@ -350,8 +340,9 @@ def send_sms(to_number, body):
         return False
 
     try:
-        # Use twilio_initialized and twilio_client from extensions.py
+        # Import Twilio configuration here to avoid issues with Flask context
         from extensions import twilio_initialized, twilio_client
+        from config import Config
 
         # Check if Twilio is properly initialized
         if not twilio_initialized:
@@ -386,18 +377,23 @@ def send_sms(to_number, body):
 
 def is_future_date_time(date_str, time_range, user=None):
     """
-    Validates if a date and time are in the future, using the user's timezone if provided.
+    Validates if a date and time are in the future and not on a weekend, using the user's timezone if provided.
     
     :param date_str: Date string in 'MM/DD/YYYY' format
     :param time_range: Time range string in 'HH:MM AM/PM - HH:MM AM/PM' format
     :param user: User object with timezone information (optional)
-    :return: True if the date and time are in the future, False otherwise
+    :return: True if the date and time are in the future and not on a weekend, False otherwise
     """
     try:
         from time_utils import get_current_time_in_timezone, localize_datetime
         
         # Parse the date string
         request_date = datetime.strptime(date_str, '%m/%d/%Y').date()
+        
+        # Check if the date is a weekend (Saturday=5, Sunday=6)
+        if request_date.weekday() >= 5:
+            logger.info(f"Date {date_str} is a weekend (weekday={request_date.weekday()}). Weekend requests are not allowed.")
+            return False
         
         # Get the user's timezone or default to UTC
         timezone_str = user.timezone if user and hasattr(user, 'timezone') else 'UTC'
@@ -450,24 +446,8 @@ def is_tech_coordinator(user):
     return user.email in Config.TECH_COORDINATOR_EMAILS
 
 
-def is_admin_l2(user):
-    """
-    Checks if a user is a level 2 admin.
-    
-    :param user: User object to check
-    :return: True if the user is a level 2 admin, False otherwise
-    """
-    return user.role == 'admin_l2'
 
 
-def is_admin(user):
-    """
-    Checks if a user is any type of admin (admin_l1 or admin_l2).
-    
-    :param user: User object to check
-    :return: True if the user is an admin, False otherwise
-    """
-    return user.role in ['admin_l1', 'admin_l2']
 
 
 def requires_role(role):

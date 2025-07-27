@@ -10,9 +10,22 @@ import os
 import sqlalchemy.exc  # Import SQLAlchemy exceptions
 from werkzeug.security import check_password_hash
 from twilio.rest import Client
-from helpers import requires_role, is_tech_coordinator, is_admin_l2, is_admin, register_template_filters
+from helpers import requires_role, is_tech_coordinator, register_template_filters
 import logging
 from logging_config import configure_logging
+# Import message templates
+from message_templates import (
+    generate_substitute_notification_email,
+    generate_admin_notification_email,
+    generate_teacher_confirmation_email,
+    generate_substitute_notification_sms,
+    generate_admin_notification_sms,
+    generate_teacher_confirmation_sms,
+    generate_admin_sub_filled_email,
+    generate_teacher_sub_filled_email,
+    generate_substitute_confirmation_email,
+    generate_admin_sub_filled_sms
+)
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -34,6 +47,21 @@ db.init_app(app)
 mail.init_app(app)
 csrf.init_app(app)
 limiter.init_app(app)
+
+# Register blueprints
+from blueprints.admin import admin_bp
+from blueprints.api import api_bp
+from blueprints.auth import auth_bp
+from blueprints.requests import requests_bp
+from blueprints.substitutes import substitutes_bp
+from blueprints.users import users_bp
+
+app.register_blueprint(admin_bp)
+app.register_blueprint(api_bp)
+app.register_blueprint(auth_bp)
+app.register_blueprint(requests_bp)
+app.register_blueprint(substitutes_bp)
+app.register_blueprint(users_bp)
 
 # Configure default rate limits
 limiter.default_limits = ["200 per day", "50 per hour"]
@@ -245,6 +273,68 @@ def is_authenticated(required_role=None):
 @app.route('/')
 def index():
     return render_template('login.html')
+
+@app.route('/signup', methods=['POST'])
+@limiter.limit("5 per minute")
+def signup():
+    if request.method == 'POST':
+        try:
+            email = request.form.get('email')
+            password = request.form.get('password')
+            role = request.form.get('role')
+            
+            # Validate inputs
+            if not email or not password or not role:
+                flash('All fields are required')
+                return redirect(url_for('index'))
+            
+            # Check if user already exists
+            existing_user = User.query.filter_by(email=email).first()
+            if existing_user:
+                flash('An account with this email already exists')
+                return redirect(url_for('index'))
+            
+            # Get the default organization
+            default_org = Organization.query.filter_by(name="Point Arena Schools").first()
+            
+            # Create new user
+            new_user = User(
+                email=email,
+                name=email.split('@')[0],  # Use part of email as name initially
+                role=role,
+                organization_id=default_org.id if default_org else None
+            )
+            
+            # Set password (assuming you have a set_password method in your User model)
+            # If not, you'll need to implement password hashing
+            if hasattr(new_user, 'set_password'):
+                new_user.set_password(password)
+            else:
+                # Fallback if set_password doesn't exist
+                from werkzeug.security import generate_password_hash
+                new_user.password_hash = generate_password_hash(password)
+            
+            db.session.add(new_user)
+            db.session.commit()
+            
+            # Log the user in
+            session['user_info'] = {'email': new_user.email, 'role': new_user.role}
+            
+            # Redirect to appropriate dashboard
+            if new_user.role in ['admin_l1', 'admin_l2']:
+                return redirect(url_for('admin_dashboard'))
+            elif new_user.role == 'substitute':
+                return redirect(url_for('substitute_dashboard'))
+            else:
+                return redirect(url_for('dashboard'))
+                
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error during signup: {e}")
+            flash('An error occurred during signup. Please try again.')
+            return redirect(url_for('index'))
+    
+    return redirect(url_for('index'))
 
 
 @app.route('/login')
@@ -829,12 +919,12 @@ def admin_create_request():
         grade_id = request.form.get('grade_id')
         subject_id = request.form.get('subject_id')
         
-        # Validate that the date and time are in the future
+        # Validate that the date and time are in the future and not on a weekend
         from helpers import is_future_date_time
         # Get the logged-in user for timezone-aware validation
         logged_in_user = User.query.filter_by(id=session.get('user_id')).first()
         if not is_future_date_time(date, time, logged_in_user):
-            flash('Error: Substitute requests can only be created for future dates and times.')
+            flash('Error: Substitute requests can only be created for future weekdays (Monday-Friday).')
             return redirect(url_for('admin_request_form'))
 
         # Validate teacher exists
@@ -882,6 +972,7 @@ def admin_create_request():
             grade_id=grade_id,
             subject_id=subject_id,
             school_id=teacher_school_id,
+            organization_id=teacher.organization_id,
             token=token
         )
         db.session.add(sub_request)
@@ -908,77 +999,73 @@ def admin_create_request():
             if subject:
                 subject_name = subject.name
 
-        # Send notification with link to eligible substitutes
-        subject = "New Substitute Request Available"
+        # Import the background threading utility
+        from threading_utils import run_in_background
+        from helpers import send_email, send_sms
 
+        # Send notification with link to eligible substitutes
         for substitute in eligible_substitutes:
-            email_body = f"""A new substitute request has been posted:
-            📅 Date: {date}
-            ⏰ Time: {time}
-            👨‍🏫 Teacher: {teacher.name}
-            📚 Grade: {grade_name}
-            📖 Subject: {subject_name}
-            📌 Details: {details or 'No additional details provided'}
-            👉 Accept the request here: {request_link}"""
-            send_email(subject, substitute.email, email_body)
+            # Use centralized template function
+            email_subject, email_body = generate_substitute_notification_email(
+                teacher, date, time, grade_name, subject_name, details, request_link
+            )
+            # Run email sending in background thread
+            run_in_background(send_email, email_subject, substitute.email, email_body)
 
             # Send SMS to eligible substitutes with phones
             if substitute.phone:
-                sms_body = f"New sub request: Teacher {teacher.name}, Date {date}, Time {time}, Grade {grade_name}, Subject {subject_name}. Accept at: {request_link}"
-                send_sms(substitute.phone, sms_body)
+                sms_body = generate_substitute_notification_sms(teacher, date, time, grade_name, subject_name, request_link)
+                # Run SMS sending in background thread
+                run_in_background(send_sms, substitute.phone, sms_body)
 
         # Send notification to admin via email
-        admin_subject = "New Substitute Request Created"
-        admin_email_body = f"""A new substitute request has been created:
-        👨‍🏫 Teacher: {teacher.name}
-        📅 Date: {date}
-        ⏰ Time: {time}
-        📚 Grade: {grade_name}
-        📖 Subject: {subject_name}
-        📌 Details: {details or 'No additional details provided'}"""
+        admin_subject, admin_email_body = generate_admin_notification_email(
+            teacher, date, time, grade_name, subject_name, details, reason
+        )
             
-        # Send to level 2 admins associated with the same school as the request
-        # This ensures notifications are only sent to admins who are responsible for the specific school
-        # If no school is specified, no notifications are sent
-        if teacher_school_id:
-            # Filter level 2 admins by school using the user_schools association table
+        # Send to level 2 admins associated with the same schools as the teacher
+        # This ensures notifications are only sent to admins who are responsible for the teacher
+        # If teacher has no schools, no notifications are sent
+        if teacher and teacher.schools:
+            # Get all school IDs associated with the teacher
+            teacher_school_ids = [school.id for school in teacher.schools]
+            
+            # Filter level 2 admins who share at least one school with the teacher
             level2_admins = User.query.filter_by(role='admin_l2').join(
                 user_schools, User.id == user_schools.c.user_id
             ).filter(
-                user_schools.c.school_id == teacher_school_id
-            ).all()
+                user_schools.c.school_id.in_(teacher_school_ids)
+            ).distinct().all()
             
             for admin in level2_admins:
-                send_email(admin_subject, admin.email, admin_email_body)
+                # Run email sending in background thread
+                run_in_background(send_email, admin_subject, admin.email, admin_email_body)
 
         # Send SMS notification to admin
-        admin_sms_body = f"New sub request: Teacher {teacher.name}, Date {date}, Time {time}, Grade {grade_name}, Subject {subject_name}, Reason {reason or 'Not specified'}"
+        admin_sms_body = generate_admin_notification_sms(teacher, date, time, grade_name, subject_name, reason)
         
-        # Use the same level 2 admins filtered by school as for email notifications
-        # If no school is specified, no SMS notifications are sent
-        if teacher_school_id and 'level2_admins' in locals():
-            # We already have level2_admins filtered by school from the email notification section
+        # Use the same level 2 admins filtered by schools as for email notifications
+        # If teacher has no schools or level2_admins is not defined, no SMS notifications are sent
+        if teacher and teacher.schools and 'level2_admins' in locals():
+            # We already have level2_admins filtered by teacher's schools from the email notification section
             for admin in level2_admins:
                 if admin.phone:  # Only send if admin has a phone number
-                    send_sms(admin.phone, admin_sms_body)
+                    # Run SMS sending in background thread
+                    run_in_background(send_sms, admin.phone, admin_sms_body)
 
         # Send email notification to teacher
-        teacher_subject = "Your Substitute Request Has Been Created"
-        teacher_email_body = f"""A substitute request has been created for you:
-        📅 Date: {date}
-        ⏰ Time: {time}
-        📚 Grade: {grade_name}
-        📖 Subject: {subject_name}
-        🔍 Reason: {reason or 'Not specified'}
-        📌 Details: {details or 'No additional details provided'}
-        You will be notified when a substitute accepts this request."""
+        teacher_subject, teacher_email_body = generate_teacher_confirmation_email(
+            date, time, grade_name, subject_name, details, reason
+        )
         if teacher.email:
-            send_email(teacher_subject, teacher.email, teacher_email_body)
+            # Run email sending in background thread
+            run_in_background(send_email, teacher_subject, teacher.email, teacher_email_body)
 
         # Send SMS confirmation to teacher
         if teacher.phone:
-            teacher_sms_body = f"Sub Request created for {date}, {time}. You will be notified when a substitute accepts."
-            send_sms(teacher.phone, teacher_sms_body)
+            teacher_sms_body = generate_teacher_confirmation_sms(date, time)
+            # Run SMS sending in background thread
+            run_in_background(send_sms, teacher.phone, teacher_sms_body)
 
         flash('Substitute request created successfully! Notification sent to matching substitutes.')
 
@@ -1008,10 +1095,10 @@ def request_form_and_submit():
             details = request.form.get('details', '')
             reason = request.form.get('reason', '')
 
-            # Validate that the date and time are in the future
+            # Validate that the date and time are in the future and not on a weekend
             from helpers import is_future_date_time
             if not is_future_date_time(date, time):
-                flash('Error: Substitute requests can only be created for future dates and times.')
+                flash('Error: Substitute requests can only be created for future weekdays (Monday-Friday).')
                 return redirect(url_for('request_form_and_submit'))
 
             teacher = get_logged_in_user()
@@ -1047,6 +1134,7 @@ def request_form_and_submit():
                         grade_id=grade_id,
                         subject_id=subject_id,
                         school_id=teacher_school_id,  # Use teacher's first school
+                        organization_id=teacher.organization_id,
                         token=token
                     )
                     db.session.add(sub_request)
@@ -1065,14 +1153,16 @@ def request_form_and_submit():
 
                 # Use the helper function to filter eligible substitutes at the database level
                 from helpers import filter_eligible_substitutes
+                from helpers import send_email, send_sms
+                from threading_utils import run_in_background
+                
                 # Convert date string to datetime.date object for availability checking
                 request_date = datetime.strptime(date, '%m/%d/%Y').date()
                 eligible_substitutes = filter_eligible_substitutes(teacher, request_date=request_date, request_time=time, school_id=teacher_school_id)
 
                 # **Send notification with link to eligible substitutes**
-                subject = "New Substitute Request Available"
+                email_subject = "New Substitute Request Available"
 
-                notification_errors = []
                 # Get grade and subject names
                 grade_name = "Not specified"
                 subject_name = "Not specified"
@@ -1086,77 +1176,59 @@ def request_form_and_submit():
                         subject_name = subject.name
                         
                 for substitute in eligible_substitutes:
-                    email_body = f"""A new substitute request has been posted:
-                    📅 Date: {date}
-                    ⏰ Time: {time}
-                    📚 Grade: {grade_name}
-                    📖 Subject: {subject_name}
-                    📌 Details: {details or 'No additional details provided'}
-                    👉 Accept the request here: {request_link}"""
-                    if not send_email(subject, substitute.email, email_body):
-                        notification_errors.append(f"Failed to send email to {substitute.email}")
+                    # Use centralized template function
+                    email_subject, email_body = generate_substitute_notification_email(
+                        teacher, date, time, grade_name, subject_name, details, request_link
+                    )
+                    # Run email sending in background thread
+                    run_in_background(send_email, email_subject, substitute.email, email_body)
 
                 # Send notification to admin via email
-                admin_subject = "New Substitute Request Created"
-                admin_email_body = f"""A new substitute request has been created:
-                👨‍🏫 Teacher: {teacher.name}
-                📅 Date: {date}
-                ⏰ Time: {time}
-                📚 Grade: {grade_name}
-                📖 Subject: {subject_name}
-                🔍 Reason: {reason or 'Not specified'}
-                📌 Details: {details or 'No additional details provided'}"""
+                admin_subject, admin_email_body = generate_admin_notification_email(
+                    teacher, date, time, grade_name, subject_name, details, reason
+                )
                 
-                # Send to level 2 admins associated with the same school as the request
-                # This ensures notifications are only sent to admins who are responsible for the specific school
-                # If no school is specified, no notifications are sent
-                teacher_school_id = None
+                # Send to level 2 admins associated with the same schools as the teacher
+                # This ensures notifications are only sent to admins who are responsible for the teacher
+                # If teacher has no schools, no notifications are sent
                 if teacher and teacher.schools:
-                    teacher_school_id = teacher.schools[0].id
-                
-                if teacher_school_id:
-                    # Filter level 2 admins by school using the user_schools association table
+                    # Get all school IDs associated with the teacher
+                    teacher_school_ids = [school.id for school in teacher.schools]
+                    
+                    # Filter level 2 admins who share at least one school with the teacher
                     level2_admins = User.query.filter_by(role='admin_l2').join(
                         user_schools, User.id == user_schools.c.user_id
                     ).filter(
-                        user_schools.c.school_id == teacher_school_id
-                    ).all()
+                        user_schools.c.school_id.in_(teacher_school_ids)
+                    ).distinct().all()
+                    
+                    # Generate SMS body once outside the loop
+                    admin_sms_body = generate_admin_notification_sms(teacher, date, time, grade_name, subject_name, reason)
                     
                     for admin in level2_admins:
-                        if not send_email(admin_subject, admin.email, admin_email_body):
-                            notification_errors.append(f"Failed to send email to admin {admin.email}")
+                        # Run email sending in background thread
+                        run_in_background(send_email, admin_subject, admin.email, admin_email_body)
                         
                         # Send SMS notification to admin if they have a phone number
                         if admin.phone:
-                            admin_sms_body = f"New sub request: Teacher {teacher.name}, Date {date}, Time {time}, Grade {grade_name}, Subject {subject_name}, Reason {reason or 'Not specified'}"
-                            if not send_sms(admin.phone, admin_sms_body):
-                                notification_errors.append(f"Failed to send SMS to admin {admin.phone}")
+                            # Run SMS sending in background thread
+                            run_in_background(send_sms, admin.phone, admin_sms_body)
 
                 # Send email notification to teacher
-                teacher_subject = "Your Substitute Request Has Been Created"
-                teacher_email_body = f"""A substitute request has been created:
-                📅 Date: {date}
-                ⏰ Time: {time}
-                📚 Grade: {grade_name}
-                📖 Subject: {subject_name}
-                🔍 Reason: {reason or 'Not specified'}
-                📌 Details: {details or 'No additional details provided'}
-                You will be notified when a substitute accepts this request."""
+                teacher_subject, teacher_email_body = generate_teacher_confirmation_email(
+                    date, time, grade_name, subject_name, details, reason
+                )
                 if teacher.email:
-                    if not send_email(teacher_subject, teacher.email, teacher_email_body):
-                        notification_errors.append(f"Failed to send email to teacher {teacher.email}")
+                    # Run email sending in background thread
+                    run_in_background(send_email, teacher_subject, teacher.email, teacher_email_body)
 
                 # Send SMS confirmation to teacher
                 if teacher.phone:
-                    teacher_sms_body = f"Sub Request created for {date}, {time}. You will be notified when a substitute accepts."
-                    if not send_sms(teacher.phone, teacher_sms_body):
-                        notification_errors.append(f"Failed to send SMS to teacher {teacher.phone}")
+                    teacher_sms_body = generate_teacher_confirmation_sms(date, time)
+                    # Run SMS sending in background thread
+                    run_in_background(send_sms, teacher.phone, teacher_sms_body)
 
-                if notification_errors:
-                    logger.warning(f"Notification errors: {notification_errors}")
-                    flash('Substitute request submitted successfully, but some notifications failed to send.')
-                else:
-                    flash('Substitute request submitted successfully! Notification sent to matching substitutes.')
+                flash('Substitute request submitted successfully! Notification sent to matching substitutes.')
             else:
                 flash('Error: Could not find your user account.')
 
@@ -1201,8 +1273,9 @@ def view_sub_request(token):
         db.session.commit()
 
         # Send email notifications
-        # Import helper functions for email templates
-        from helpers import generate_admin_sub_filled_email, generate_teacher_sub_filled_email, generate_substitute_confirmation_email
+        # Import helper functions for email templates and background threading
+        from helpers import generate_admin_sub_filled_email, generate_teacher_sub_filled_email, generate_substitute_confirmation_email, send_email
+        from threading_utils import run_in_background
 
         # 1. Email to level 2 admins associated with the same school as the request
         # This ensures notifications are only sent to admins who are responsible for the specific school
@@ -1222,15 +1295,18 @@ def view_sub_request(token):
             ).all()
             
             for admin in level2_admins:
-                send_email(admin_subject, admin.email, admin_email_body)
+                # Run email sending in background thread
+                run_in_background(send_email, admin_subject, admin.email, admin_email_body)
 
         # 2. Email to teacher
         teacher_subject, teacher_email_body = generate_teacher_sub_filled_email(sub_request, logged_in_user)
-        send_email(teacher_subject, teacher.email, teacher_email_body)
+        # Run email sending in background thread
+        run_in_background(send_email, teacher_subject, teacher.email, teacher_email_body)
 
         # 3. Email to substitute
         sub_subject, sub_email_body = generate_substitute_confirmation_email(teacher, sub_request)
-        send_email(sub_subject, logged_in_user.email, sub_email_body)
+        # Run email sending in background thread
+        run_in_background(send_email, sub_subject, logged_in_user.email, sub_email_body)
 
         flash("You have successfully accepted the sub request.")
         return redirect(url_for('view_sub_request', token=token))
@@ -1491,9 +1567,10 @@ def accept_sub_request(token):
     # Fetch the teacher information
     teacher = User.query.get(sub_request.teacher_id)
 
-    # Send email notifications
-    # Import helper functions for email templates
-    from helpers import generate_admin_sub_filled_email, generate_teacher_sub_filled_email, generate_substitute_confirmation_email
+    # Import helper functions for email templates, email/SMS sending, and background threading
+    from helpers import generate_admin_sub_filled_email, generate_teacher_sub_filled_email, generate_substitute_confirmation_email, send_email, send_sms
+    from threading_utils import run_in_background
+    from pdf_handler import generate_absence_form_data, fill_absence_form
 
     # 1. Email to level 2 admins associated with the same school as the request
     # This ensures notifications are only sent to admins who are responsible for the specific school
@@ -1504,7 +1581,8 @@ def accept_sub_request(token):
     school_id = sub_request.school_id
     
     # SMS notification is shorter due to character limitations
-    admin_sms_body = f"Sub position filled: {teacher.name}, {sub_request.date.strftime('%B %d, %Y')}, {sub_request.time}, filled by {logged_in_user.name}"
+    from helpers import generate_admin_sub_filled_sms
+    admin_sms_body = generate_admin_sub_filled_sms(teacher, sub_request, logged_in_user.name)
     
     if school_id:
         # Filter level 2 admins by school using the user_schools association table
@@ -1516,38 +1594,41 @@ def accept_sub_request(token):
         ).all()
         
         for admin in level2_admins:
-            # Send email notification
-            send_email(admin_subject, admin.email, admin_email_body)
+            # Run email sending in background thread
+            run_in_background(send_email, admin_subject, admin.email, admin_email_body)
             
-            # Send SMS notification if phone number is available
-            # This replaces the hardcoded admin phone numbers from environment variables
+            # Run SMS sending in background thread if phone number is available
             if admin.phone:
-                send_sms(admin.phone, admin_sms_body)
+                run_in_background(send_sms, admin.phone, admin_sms_body)
 
     # 2. Email to teacher
     teacher_subject, teacher_email_body = generate_teacher_sub_filled_email(sub_request, logged_in_user)
-    send_email(teacher_subject, teacher.email, teacher_email_body)
+    # Run email sending in background thread
+    run_in_background(send_email, teacher_subject, teacher.email, teacher_email_body)
 
     # 3. Email to substitute
     sub_subject, sub_email_body = generate_substitute_confirmation_email(teacher, sub_request)
-    send_email(sub_subject, logged_in_user.email, sub_email_body)
+    # Run email sending in background thread
+    run_in_background(send_email, sub_subject, logged_in_user.email, sub_email_body)
     
-    # Generate and fill absence report PDF
-    try:
-        from pdf_handler import generate_absence_form_data, fill_absence_form
-        
-        # Format the date for the PDF filename (YYYY-MM-DD)
-        request_date = sub_request.date.strftime("%Y-%m-%d")
-        
-        # Generate form data from the request
-        form_data = generate_absence_form_data(sub_request, teacher, logged_in_user)
-        
-        # Fill the PDF form
-        pdf_path = fill_absence_form(teacher.name, request_date, form_data)
-        
-        logger.info(f"Absence report PDF generated successfully: {pdf_path}")
-    except Exception as e:
-        logger.error(f"Error generating absence report PDF: {e}")
+    # Generate and fill absence report PDF in background thread
+    def generate_pdf_in_background():
+        try:
+            # Format the date for the PDF filename (YYYY-MM-DD)
+            request_date = sub_request.date.strftime("%Y-%m-%d")
+            
+            # Generate form data from the request
+            form_data = generate_absence_form_data(sub_request, teacher, logged_in_user)
+            
+            # Fill the PDF form
+            pdf_path = fill_absence_form(teacher.name, request_date, form_data)
+            
+            logger.info(f"Absence report PDF generated successfully: {pdf_path}")
+        except Exception as e:
+            logger.error(f"Error generating absence report PDF: {e}")
+    
+    # Run PDF generation in background thread
+    run_in_background(generate_pdf_in_background)
 
     return jsonify({"status": "success", "message": "Position accepted!"})
 
@@ -1708,9 +1789,19 @@ def edit_request(request_id):
 
     elif request.method == 'POST':
         try:
+            # Get the date and time from the form
+            date_str = request.form['date']
+            time_str = request.form['time']
+            
+            # Validate that the date and time are in the future and not on a weekend
+            from helpers import is_future_date_time
+            if not is_future_date_time(date_str, time_str, logged_in_user):
+                flash('Error: Substitute requests can only be created for future weekdays (Monday-Friday).')
+                return redirect(url_for('edit_request', request_id=request_id))
+            
             # Update the substitute request
-            sub_request.date = datetime.strptime(request.form['date'], '%m/%d/%Y')
-            sub_request.time = request.form['time']
+            sub_request.date = datetime.strptime(date_str, '%m/%d/%Y')
+            sub_request.time = time_str
             sub_request.details = request.form.get('details', '').strip()
             sub_request.reason = request.form.get('reason', '')
             sub_request.grade_id = request.form.get('grade_id')

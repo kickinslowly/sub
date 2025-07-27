@@ -67,6 +67,15 @@
             background-color: #17a673;
             border-color: #169b6b;
         }
+        
+        /* Checkbox group styling */
+        .checkbox-group {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ced4da;
+            border-radius: 0.25rem;
+            padding: 0.5rem;
+        }
     </style>
 </head>
 <body>
@@ -110,13 +119,32 @@
                                 <input type="tel" id="phone" name="phone" class="form-control" placeholder="e.g., 1234567890">
                             </div>
                             <div class="mb-3">
-                                <label for="school_id" class="form-label">School:</label>
-                                <select id="school_id" name="school_id" class="form-select">
-                                    <option value="">Select a school</option>
-                                    {% for school in schools %}
-                                    <option value="{{ school.id }}">{{ school.name }}</option>
-                                    {% endfor %}
-                                </select>
+                                <label class="form-label">Schools:</label>
+                                <div class="checkbox-group">
+                                    <div class="row row-cols-2 g-2">
+                                        {% for school in schools %}
+                                        <div class="col">
+                                            <div class="form-check">
+                                                <input 
+                                                    class="form-check-input" 
+                                                    type="checkbox" 
+                                                    name="schools" 
+                                                    value="{{ school.id }}" 
+                                                    id="school-{{ school.id }}">
+                                                <label class="form-check-label" for="school-{{ school.id }}">
+                                                    {{ school.name }}
+                                                </label>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                <div class="form-text mt-1">
+                                    <span id="schools-counter" style="display: none;"></span>
+                                </div>
+                                
+                                <!-- Hidden field for backward compatibility -->
+                                <input type="hidden" name="school_id" id="school_id">
                             </div>
                             <div class="mb-3">
                                 <label for="admin_type" class="form-label">Admin Type:</label>
@@ -165,7 +193,8 @@
                                                                 data-user-email="{{ admin.email }}"
                                                                 data-user-role="{{ admin.role }}"
                                                                 data-user-phone="{{ admin.phone }}"
-                                                                data-user-school-id="{{ admin.school_id }}">
+                                                                data-user-school-id="{{ admin.school_id }}"
+                                                                data-user-schools="{{ admin.schools|map(attribute='id')|list|tojson }}">
                                                             <i class="bi bi-pencil-square me-1"></i>Edit
                                                         </button>
                                                         <button class="btn btn-sm btn-outline-danger delete-btn" 
@@ -217,13 +246,32 @@
                             <input type="tel" class="form-control" id="edit-phone" name="phone" placeholder="e.g., 1234567890">
                         </div>
                         <div class="mb-3">
-                            <label for="edit-school_id" class="form-label">School:</label>
-                            <select id="edit-school_id" name="school_id" class="form-select">
-                                <option value="">Select a school</option>
-                                {% for school in schools %}
-                                <option value="{{ school.id }}">{{ school.name }}</option>
-                                {% endfor %}
-                            </select>
+                            <label class="form-label">Schools:</label>
+                            <div class="checkbox-group">
+                                <div class="row row-cols-2 g-2">
+                                    {% for school in schools %}
+                                    <div class="col">
+                                        <div class="form-check">
+                                            <input 
+                                                class="form-check-input" 
+                                                type="checkbox" 
+                                                name="schools" 
+                                                value="{{ school.id }}" 
+                                                id="edit-school-{{ school.id }}">
+                                            <label class="form-check-label" for="edit-school-{{ school.id }}">
+                                                {{ school.name }}
+                                            </label>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            <div class="form-text mt-1">
+                                <span id="edit-schools-counter" style="display: none;"></span>
+                            </div>
+                            
+                            <!-- Hidden field for backward compatibility -->
+                            <input type="hidden" name="school_id" id="edit-school_id">
                         </div>
                         <!-- Hidden input for role -->
                         <input type="hidden" id="edit-role" name="role" value="admin_l2">
@@ -293,13 +341,35 @@
                     const userEmail = button.dataset.userEmail;
                     const userPhone = button.dataset.userPhone || '';
                     const userSchoolId = button.dataset.userSchoolId || '';
+                    
+                    // Parse the schools data attribute if it exists
+                    let userSchools = [];
+                    if (button.dataset.userSchools) {
+                        try {
+                            userSchools = JSON.parse(button.dataset.userSchools);
+                        } catch (e) {
+                            console.error('Error parsing schools data:', e);
+                        }
+                    }
 
                     // Set form values
                     editName.value = userName;
                     editEmail.value = userEmail;
                     editPhone.value = userPhone;
-                    editSchoolId.value = userSchoolId;
                     editUserId.value = userId;
+                    
+                    // Reset all school checkboxes
+                    document.querySelectorAll('[id^="edit-school-"]').forEach(checkbox => {
+                        checkbox.checked = false;
+                    });
+                    
+                    // Check the appropriate school checkboxes
+                    userSchools.forEach(schoolId => {
+                        const checkbox = document.getElementById(`edit-school-${schoolId}`);
+                        if (checkbox) {
+                            checkbox.checked = true;
+                        }
+                    });
 
                     // Set form action
                     editUserForm.action = `/edit_user/${userId}`;
