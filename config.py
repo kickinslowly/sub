@@ -22,7 +22,7 @@ class Config:
     MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
     MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
 
-    # Tech coordinator emails (highest level admin)
+    # Super user email (kickinslowly@gmail.com) - automatically assigned admin_l1 role
     TECH_COORDINATOR_EMAILS = os.environ.get('TECH_COORDINATOR_EMAILS', '').split(',')
     
     # Admin emails (level 2 admins - front office, principal)
@@ -32,9 +32,6 @@ class Config:
     TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID')
     TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN')
     TWILIO_PHONE_NUMBER = os.environ.get('TWILIO_PHONE_NUMBER')
-
-    # Admin phone numbers as a comma-separated list in environment variable
-    ADMIN_PHONE_NUMBERS = os.environ.get('ADMIN_PHONE_NUMBERS', '').split(',')
     
     # Add validation for required environment variables
     @classmethod

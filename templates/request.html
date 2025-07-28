@@ -11,8 +11,43 @@
     <link rel="stylesheet" type="text/css" href="https://npmcdn.com/flatpickr/dist/themes/material_blue.css">
     <!-- Shared CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <style>
+        /* Lottie overlay styles */
+        .lottie-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease;
+        }
+        
+        .lottie-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .lottie-container {
+            width: 30vw;
+            height: 30vw;
+            max-width: 300px;
+            max-height: 300px;
+        }
+    </style>
 </head>
 <body>
+    <!-- Lottie overlay -->
+    <div id="lottie-overlay" class="lottie-overlay">
+        <div id="lottie-container" class="lottie-container"></div>
+    </div>
+    
     <div class="request-container">
         <h1>{% if edit_mode %}Edit Substitute Request{% else %}Submit Substitute Request{% endif %}</h1>
         <form id="subRequestForm" class="request-form" method="POST" onsubmit="handleFormSubmit(event)">
@@ -107,6 +142,8 @@
     <!-- No Bootstrap JS needed -->
     <!-- Flatpickr JS -->
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <!-- Lottie Player -->
+    <script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
     <script>
         // Initialize Flatpickr time pickers
         document.addEventListener('DOMContentLoaded', function() {
@@ -185,7 +222,7 @@
                     startTimePicker.setDate("8:20 AM");
                     endTimePicker.setDate("1:35 PM");
                 } else { // Monday, Tuesday, Thursday, Friday
-                    startTimePicker.setDate("8:20 AM");
+                    startTimePicker.setDate("8:15 AM");
                     endTimePicker.setDate("3:15 PM");
                 }
                 
@@ -224,12 +261,59 @@
 
             // Get the submit button
             const submitBtn = document.getElementById('submitBtn');
-            const spinner = submitBtn.querySelector('.spinner');
-
+            const btnText = submitBtn.querySelector('.btn-text');
+            
             // Show loading state
-            submitBtn.classList.add('btn-loading');
-            spinner.classList.remove('d-none');
+            btnText.innerHTML = 'Processing...';
             submitBtn.disabled = true;
+            
+            // Show the Lottie overlay
+            const lottieOverlay = document.getElementById('lottie-overlay');
+            const lottieContainer = document.getElementById('lottie-container');
+            
+            // Clear any previous content
+            lottieContainer.innerHTML = '';
+            
+            try {
+                console.log("Creating Lottie player for request.html");
+                
+                // Create Lottie player
+                const lottiePlayer = document.createElement('lottie-player');
+                
+                // Add event listeners for debugging
+                lottiePlayer.addEventListener('ready', function() {
+                    console.log("Lottie animation ready event fired");
+                });
+                
+                lottiePlayer.addEventListener('load', function() {
+                    console.log("Lottie animation load event fired");
+                });
+                
+                lottiePlayer.addEventListener('error', function(e) {
+                    console.error("Lottie animation error:", e.detail || "Unknown error");
+                });
+                
+                // Set properties
+                lottiePlayer.src = "{{ url_for('static', filename='images/lottie.json') }}";
+                lottiePlayer.background = "transparent";
+                lottiePlayer.speed = "1";
+                lottiePlayer.style.width = "100%";
+                lottiePlayer.style.height = "100%";
+                lottiePlayer.loop = true;
+                lottiePlayer.autoplay = true;
+                
+                // Add Lottie player to container
+                lottieContainer.appendChild(lottiePlayer);
+                console.log("Lottie player appended to container");
+                
+                // Show the overlay
+                lottieOverlay.classList.add('active');
+            } catch (error) {
+                console.error("Error creating Lottie animation:", error);
+                // Fallback to spinner if Lottie fails
+                lottieContainer.innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size: 48px;"></i>';
+                lottieOverlay.classList.add('active');
+            }
 
             // Update the time range field one last time
             const startTime = document.getElementById('timeStart').value;
@@ -250,9 +334,13 @@
                     // Hide toast
                     toastElement.style.display = 'none';
                     
+                    // Hide the Lottie overlay
+                    const lottieOverlay = document.getElementById('lottie-overlay');
+                    lottieOverlay.classList.remove('active');
+                    
                     // Reset button state before submitting (for better UX if there's a page refresh)
-                    submitBtn.classList.remove('btn-loading');
-                    spinner.classList.add('d-none');
+                    btnText.innerHTML = '{% if edit_mode %}Update Request{% else %}Submit Request{% endif %}';
+                    submitBtn.disabled = false;
 
                     document.getElementById('subRequestForm').submit();
                 }, 1500); // 1.5-second delay after toast shows

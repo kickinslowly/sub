@@ -55,6 +55,7 @@ from blueprints.auth import auth_bp
 from blueprints.requests import requests_bp
 from blueprints.substitutes import substitutes_bp
 from blueprints.users import users_bp
+from blueprints.super_admin import super_admin_bp
 
 app.register_blueprint(admin_bp)
 app.register_blueprint(api_bp)
@@ -62,6 +63,7 @@ app.register_blueprint(auth_bp)
 app.register_blueprint(requests_bp)
 app.register_blueprint(substitutes_bp)
 app.register_blueprint(users_bp)
+app.register_blueprint(super_admin_bp)
 
 # Configure default rate limits
 limiter.default_limits = ["200 per day", "50 per hour"]
@@ -174,6 +176,26 @@ with app.app_context():
     
     # Seed the database with initial data
     seed_database()  # Seed the database with default data
+    
+    # Check if super_admin exists, if not create one
+    logger.debug("Checking for super_admin user...")
+    super_admin = User.query.filter_by(role='super_admin').first()
+    if not super_admin:
+        logger.info("No super_admin found. Creating super_admin user: Aaron Allen")
+        # Get the default organization
+        default_org = Organization.query.filter_by(name="Point Arena Schools").first()
+        
+        # Create super_admin user
+        super_admin = User(
+            name="Aaron Allen",
+            email="kickinslowly@gmail.com",
+            role="super_admin",
+            organization_id=default_org.id if default_org else None
+        )
+        
+        db.session.add(super_admin)
+        db.session.commit()
+        logger.info("Super admin user created successfully")
 
 
 # Google OAuth setup
@@ -254,6 +276,10 @@ def is_authenticated(required_role=None):
         
     user_role = user_info.get('role')
     
+    # Super admin has access to everything
+    if user_role == 'super_admin':
+        return True
+    
     # Handle admin hierarchy
     if required_role == 'admin':
         # Both admin levels can access admin features
@@ -264,6 +290,9 @@ def is_authenticated(required_role=None):
     elif required_role == 'admin_l2':
         # Only level 2 admins can access
         return user_role == 'admin_l2'
+    elif required_role == 'super_admin':
+        # Only super admins can access super admin features
+        return user_role == 'super_admin'
     else:
         # For other roles, exact match is required
         return user_role == required_role
@@ -380,25 +409,20 @@ def authorized():
             # Get the default organization (Point Arena Schools)
             default_org = Organization.query.filter_by(name="Point Arena Schools").first()
             
-            # If user doesn't exist, create a new user
+            # If user doesn't exist, deny login
             if not user:
-                # Create new user with minimal required fields to avoid schema issues
-                new_user = User(
-                    email=user_info['email'],
-                    name=user_info.get('name', 'Unknown'),
-                    role=role,
-                    organization_id=default_org.id if default_org else None
-                )
-                db.session.add(new_user)
-                user = new_user
+                flash('Your account does not exist. Please contact an administrator to create an account for you.')
+                logger.info(f"Login denied for non-existent user: {user_info['email']}")
+                return redirect(url_for('index', login_error=1))
+                
             # Ensure existing user has an organization
-            elif user.organization_id is None and default_org:
+            if user.organization_id is None and default_org:
                 user.organization_id = default_org.id
-            else:
-                # Update role if it's missing or if it's the old 'admin' role that needs to be migrated
-                if not user.role or (user.role == 'admin' and role in ['admin_l1', 'admin_l2']):
-                    user.role = role
-                    logger.debug(f"Updated user role from 'admin' to '{role}'")
+            
+            # Update role if it's missing or if it's the old 'admin' role that needs to be migrated
+            if not user.role or (user.role == 'admin' and role in ['admin_l1', 'admin_l2']):
+                user.role = role
+                logger.debug(f"Updated user role from 'admin' to '{role}'")
 
             db.session.commit()
         except sqlalchemy.exc.OperationalError as e:
@@ -420,7 +444,9 @@ def authorized():
         logger.debug(f"Role Assigned: {user.role}, Email: {user.email}")
 
         # Redirect to the correct dashboard based on role
-        if user.role in ['admin_l1', 'admin_l2']:
+        if user.role == 'super_admin':
+            return redirect(url_for('super_admin.dashboard'))
+        elif user.role in ['admin_l1', 'admin_l2']:
             return redirect(url_for('admin_dashboard'))
         elif user.role == 'substitute':
             return redirect(url_for('substitute_dashboard'))
@@ -566,8 +592,11 @@ def edit_profile(user_id):
     # Get the user to edit
     user_to_edit = User.query.get_or_404(user_id)
     
-    # Check permissions: user can edit their own profile or admin_l2 can edit any profile
-    if logged_in_user.id != user_to_edit.id and logged_in_user.role != 'admin_l2':
+    # Import the shared schools check function
+    from blueprints.utils.shared_schools_check import check_shared_schools_access
+    
+    # Check permissions: user can edit their own profile or admin_l2 can edit profiles of users from shared schools
+    if logged_in_user.id != user_to_edit.id and (logged_in_user.role != 'admin_l2' or not check_shared_schools_access(user_id)):
         flash('You do not have permission to edit this profile.')
         return redirect(url_for('user_profile', user_id=user_id))
 
@@ -636,6 +665,13 @@ def dashboard():
     total_hours_out = calculate_total_hours_out(past_bookings)
     
     return render_template('dashboard.html', user=logged_in_user, past_bookings=past_bookings, total_hours_out=total_hours_out)
+
+
+@app.route('/lottie_debug')
+def lottie_debug():
+    """Debug page for testing Lottie animations."""
+    # No authentication required for easy testing
+    return render_template('sub_request_debug.html')
 
 
 @app.route('/api/unavailability', methods=['GET', 'POST'])
@@ -896,9 +932,18 @@ def admin_dashboard():
 @requires_role('admin')
 def admin_request_form():
     """Display the form for admins to create substitute requests."""
-        
-    # Get all teachers for the dropdown
-    teachers = User.query.filter_by(role='teacher').order_by(User.name).all()
+    
+    # Import the filter_by_shared_schools function
+    from blueprints.utils.utils import filter_by_shared_schools
+    
+    # Get teachers for the dropdown, filtered by shared schools for level 2 admins
+    teachers_query = User.query.filter_by(role='teacher')
+    
+    # Apply the shared schools filter for level 2 admins
+    teachers_query = filter_by_shared_schools(teachers_query, User)
+    
+    # Get the final list of teachers, ordered by name
+    teachers = teachers_query.order_by(User.name).all()
     
     return render_template('admin_request.html', teachers=teachers)
 
@@ -1407,9 +1452,16 @@ def manage_users():
     sort_by = request.args.get('sort_by', 'id')
     sort_order = request.args.get('sort_order', 'asc')
 
+    # Import the filter_by_shared_schools function
+    from blueprints.utils.utils import filter_by_shared_schools
+
     # Base queries for teachers and substitutes (filtered by organization)
     teachers_query = filter_by_organization(User.query, User).filter_by(role='teacher')
     substitutes_query = filter_by_organization(User.query, User).filter_by(role='substitute')
+    
+    # Apply the shared schools filter for level 2 admins
+    teachers_query = filter_by_shared_schools(teachers_query, User)
+    substitutes_query = filter_by_shared_schools(substitutes_query, User)
 
     # Initialize teachers and substitutes with default values
     # in case there's an error in the sorting logic
@@ -1694,6 +1746,14 @@ def add_user():
 @app.route('/edit_user/<int:user_id>', methods=['POST'])
 @limiter.limit("10 per minute")
 def edit_user(user_id):
+    # Import the shared schools check function
+    from blueprints.utils.shared_schools_check import check_shared_schools_access
+    
+    # Check if the current user has permission to edit this user
+    if not check_shared_schools_access(user_id):
+        flash('You do not have permission to edit this user.')
+        return redirect(url_for('manage_users'))
+    
     # Fetch the user from the database
     user = User.query.get_or_404(user_id)
 
@@ -1735,6 +1795,14 @@ def user_profile(user_id):
     if not current_user:
         flash('Please log in to continue.')
         return redirect(url_for('index'))
+    
+    # Import the shared schools check function
+    from blueprints.utils.shared_schools_check import check_shared_schools_access
+    
+    # Check if the current user has permission to view this user's profile
+    if current_user.role == 'admin_l2' and not check_shared_schools_access(user_id):
+        flash('You do not have permission to view this user profile.')
+        return redirect(url_for('manage_users'))
         
     # Query the database for the user by ID
     user = User.query.get(user_id)
@@ -1859,6 +1927,15 @@ def delete_user(user_id):
     if not is_authenticated(required_role='admin'):
         flash('Access denied. Admins only.')
         return redirect(url_for('index'))
+    
+    # Import the shared schools check function
+    from blueprints.utils.shared_schools_check import check_shared_schools_access
+    
+    # Check if the current user has permission to delete this user
+    logged_in_user = get_logged_in_user()
+    if logged_in_user.role == 'admin_l2' and not check_shared_schools_access(user_id):
+        flash('You do not have permission to delete this user.')
+        return redirect(url_for('manage_users'))
 
     # Find the user to delete
     user = User.query.get_or_404(user_id)

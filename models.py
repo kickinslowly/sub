@@ -57,7 +57,7 @@ class User(db.Model):
     id = Column(Integer, primary_key=True)
     name = db.Column(db.String(120))
     email = Column(String(120), nullable=False)
-    role = Column(String(20), nullable=False)  # 'teacher', 'substitute', 'admin_l1', 'admin_l2'
+    role = Column(String(20), nullable=False)  # 'teacher', 'substitute', 'admin_l1', 'admin_l2', 'super_admin'
     phone = Column(String(20), nullable=True)
     timezone = Column(String(50), nullable=True, default='UTC')  # User's timezone
     
