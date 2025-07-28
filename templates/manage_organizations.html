@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Organizations</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Shared CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <style>
+        .super-admin-badge {
+            background-color: #FF5722;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        
+        .org-card {
+            margin-bottom: 20px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .org-header {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .org-body {
+            padding: 15px;
+            background-color: white;
+        }
+        
+        .org-stats {
+            display: flex;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+        
+        .org-stat {
+            flex: 1;
+            min-width: 120px;
+            background-color: #f8f9fa;
+            padding: 10px;
+            margin: 5px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        
+        .org-stat .count {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4e73df;
+        }
+        
+        .org-stat .label {
+            font-size: 14px;
+            color: #5a5c69;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .add-org-form {
+            max-width: 600px;
+            margin: 0 auto 20px;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+    </style>
+    <link rel="icon" href="{{ url_for('static', filename='images/favicon.png') }}">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1><i class="fas fa-building"></i> Manage Organizations <span class="super-admin-badge">SUPER ADMIN</span></h1>
+            <div class="header-actions">
+                <span class="welcome-text">Welcome, {{ user.name }}</span>
+                <a href="/logout" class="btn btn-danger"><i class="fas fa-sign-out-alt"></i> Logout</a>
+            </div>
+        </div>
+    </header>
+    
+    <div class="container">
+        <div class="dashboard-header d-flex justify-content-between align-items-center mb-4">
+            <h2 class="h3 mb-0 text-gray-800">
+                <i class="fas fa-building me-2"></i>Organization Management
+            </h2>
+            <div>
+                <a href="/super_admin" class="btn btn-outline-primary">
+                    <i class="fas fa-arrow-left me-1"></i> Back to Dashboard
+                </a>
+                <button id="add-org-btn" class="btn btn-success ms-2">
+                    <i class="fas fa-plus me-1"></i> Add Organization
+                </button>
+            </div>
+        </div>
+        
+        <!-- Add Organization Form (hidden by default) -->
+        <div id="add-org-form" class="add-org-form" style="display: none;">
+            <h3><i class="fas fa-plus-circle"></i> Add New Organization</h3>
+            <form action="/super_admin/add_organization" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="mb-3">
+                    <label for="org_name" class="form-label">Organization Name:</label>
+                    <input type="text" id="org_name" name="name" class="form-control" required>
+                </div>
+                <div class="d-flex justify-content-end gap-2">
+                    <button type="button" id="cancel-add-org" class="btn btn-outline-secondary">
+                        <i class="fas fa-times me-1"></i> Cancel
+                    </button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-plus me-1"></i> Add Organization
+                    </button>
+                </div>
+            </form>
+        </div>
+        
+        <!-- Organizations List -->
+        <div class="organizations-list">
+            {% if organizations %}
+                {% for org in organizations %}
+                    <div class="org-card">
+                        <div class="org-header">
+                            <h3>{{ org.name }}</h3>
+                            <div class="action-buttons">
+                                <button class="btn btn-sm btn-outline-primary edit-org-btn" data-org-id="{{ org.id }}" data-org-name="{{ org.name }}">
+                                    <i class="fas fa-edit me-1"></i> Edit
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger delete-org-btn" data-org-id="{{ org.id }}" data-org-name="{{ org.name }}">
+                                    <i class="fas fa-trash me-1"></i> Delete
+                                </button>
+                            </div>
+                        </div>
+                        <div class="org-body">
+                            <div class="org-stats">
+                                <div class="org-stat">
+                                    <div class="count">{{ org.users|length }}</div>
+                                    <div class="label">Users</div>
+                                </div>
+                                <div class="org-stat">
+                                    <div class="count">{{ org.schools|length }}</div>
+                                    <div class="label">Schools</div>
+                                </div>
+                                <div class="org-stat">
+                                    <div class="count">{{ org.substitute_requests|length }}</div>
+                                    <div class="label">Requests</div>
+                                </div>
+                            </div>
+                            <div class="d-grid">
+                                <a href="/super_admin/manage_all_users?org_id={{ org.id }}" class="btn btn-primary">
+                                    <i class="fas fa-users me-1"></i> Manage Users
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-1"></i> No organizations found. Add one using the button above.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- Edit Organization Modal -->
+    <div class="modal fade" id="edit-org-modal" tabindex="-1" aria-labelledby="editOrgModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editOrgModalLabel">
+                        <i class="fas fa-edit me-2"></i>Edit Organization
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="edit-org-form" method="POST" action="">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="mb-3">
+                            <label for="edit-org-name" class="form-label">Organization Name:</label>
+                            <input type="text" class="form-control" id="edit-org-name" name="name" required>
+                        </div>
+                        
+                        <!-- Schools Management Section -->
+                        <div class="mt-4">
+                            <h5><i class="fas fa-school me-2"></i>Manage Schools</h5>
+                            
+                            <!-- Current Schools List -->
+                            <div class="mb-3" id="current-schools-container">
+                                <label class="form-label">Current Schools:</label>
+                                <div class="list-group" id="current-schools-list">
+                                    <!-- Schools will be populated via JavaScript -->
+                                </div>
+                            </div>
+                            
+                            <!-- Add New School -->
+                            <div class="card mb-3">
+                                <div class="card-header bg-light">
+                                    <h6 class="mb-0"><i class="fas fa-plus-circle me-2"></i>Add New School</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row g-2">
+                                        <div class="col-md-6">
+                                            <label for="add-school-name" class="form-label">School Name:</label>
+                                            <input type="text" class="form-control" id="add-school-name" name="add_school_name">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label for="add-school-code" class="form-label">School Code:</label>
+                                            <input type="text" class="form-control" id="add-school-code" name="add_school_code">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <input type="hidden" id="edit-org-id" name="org_id">
+                        <div class="modal-footer px-0 pb-0">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save me-1"></i>Save Changes
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Delete Organization Modal -->
+    <div class="modal fade" id="delete-org-modal" tabindex="-1" aria-labelledby="deleteOrgModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deleteOrgModalLabel">
+                        <i class="fas fa-exclamation-triangle text-danger me-2"></i>Confirm Delete
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to delete the organization <strong><span id="delete-org-name"></span></strong>?</p>
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle me-1"></i> This will delete all users, schools, and data associated with this organization. This action cannot be undone.
+                    </div>
+                    <form id="delete-org-form" method="POST" action="">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" id="delete-org-id" name="org_id">
+                        <div class="modal-footer px-0 pb-0">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-danger">
+                                <i class="fas fa-trash me-1"></i>Delete Organization
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add Organization Form Toggle
+            const addOrgBtn = document.getElementById('add-org-btn');
+            const addOrgForm = document.getElementById('add-org-form');
+            const cancelAddOrgBtn = document.getElementById('cancel-add-org');
+            
+            addOrgBtn.addEventListener('click', function() {
+                addOrgForm.style.display = 'block';
+                addOrgBtn.style.display = 'none';
+            });
+            
+            cancelAddOrgBtn.addEventListener('click', function() {
+                addOrgForm.style.display = 'none';
+                addOrgBtn.style.display = 'inline-block';
+            });
+            
+            // Edit Organization Modal
+            const editOrgModal = new bootstrap.Modal(document.getElementById('edit-org-modal'));
+            const editOrgBtns = document.querySelectorAll('.edit-org-btn');
+            const editOrgForm = document.getElementById('edit-org-form');
+            const editOrgName = document.getElementById('edit-org-name');
+            const editOrgId = document.getElementById('edit-org-id');
+            const currentSchoolsList = document.getElementById('current-schools-list');
+            
+            // Function to fetch schools for an organization
+            async function fetchSchoolsForOrganization(orgId) {
+                try {
+                    const response = await fetch(`/super_admin/get_organization_schools/${orgId}`);
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch schools');
+                    }
+                    return await response.json();
+                } catch (error) {
+                    console.error('Error fetching schools:', error);
+                    return { schools: [] };
+                }
+            }
+            
+            // Function to render schools list
+            function renderSchoolsList(schools) {
+                currentSchoolsList.innerHTML = '';
+                
+                if (schools.length === 0) {
+                    currentSchoolsList.innerHTML = '<div class="list-group-item text-muted">No schools associated with this organization</div>';
+                    return;
+                }
+                
+                schools.forEach(school => {
+                    const schoolItem = document.createElement('div');
+                    schoolItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+                    
+                    const schoolInfo = document.createElement('div');
+                    schoolInfo.innerHTML = `
+                        <strong>${school.name}</strong>
+                        <span class="badge bg-secondary ms-2">${school.code}</span>
+                    `;
+                    
+                    const removeBtn = document.createElement('div');
+                    removeBtn.className = 'form-check';
+                    removeBtn.innerHTML = `
+                        <input class="form-check-input" type="checkbox" name="remove_school" value="${school.id}" id="remove-school-${school.id}">
+                        <label class="form-check-label" for="remove-school-${school.id}">
+                            Remove
+                        </label>
+                    `;
+                    
+                    schoolItem.appendChild(schoolInfo);
+                    schoolItem.appendChild(removeBtn);
+                    currentSchoolsList.appendChild(schoolItem);
+                });
+            }
+            
+            editOrgBtns.forEach(btn => {
+                btn.addEventListener('click', async function() {
+                    const orgId = this.dataset.orgId;
+                    const orgName = this.dataset.orgName;
+                    
+                    editOrgName.value = orgName;
+                    editOrgId.value = orgId;
+                    editOrgForm.action = `/super_admin/edit_organization/${orgId}`;
+                    
+                    // Fetch and display schools for this organization
+                    const schoolsData = await fetchSchoolsForOrganization(orgId);
+                    renderSchoolsList(schoolsData.schools);
+                    
+                    editOrgModal.show();
+                });
+            });
+            
+            // Delete Organization Modal
+            const deleteOrgModal = new bootstrap.Modal(document.getElementById('delete-org-modal'));
+            const deleteOrgBtns = document.querySelectorAll('.delete-org-btn');
+            const deleteOrgForm = document.getElementById('delete-org-form');
+            const deleteOrgName = document.getElementById('delete-org-name');
+            const deleteOrgId = document.getElementById('delete-org-id');
+            
+            deleteOrgBtns.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const orgId = this.dataset.orgId;
+                    const orgName = this.dataset.orgName;
+                    
+                    deleteOrgName.textContent = orgName;
+                    deleteOrgId.value = orgId;
+                    deleteOrgForm.action = `/super_admin/delete_organization/${orgId}`;
+                    
+                    deleteOrgModal.show();
+                });
+            });
+        });
+    </script>
+</body>
+</html>
