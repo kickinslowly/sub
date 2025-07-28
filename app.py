@@ -76,23 +76,6 @@ from migrations import init_migrations
 init_migrations(app)
 oauth = OAuth(app)
 
-# Initialize database backup scheduler
-from scheduler import start_scheduler, create_immediate_backup
-from backup import get_backup_info, ensure_backup_dir
-
-# Ensure backup directory exists
-with app.app_context():
-    ensure_backup_dir()
-    
-    # Create initial backups if they don't exist
-    backup_info = get_backup_info()
-    if not backup_info['daily_backup']['exists']:
-        create_immediate_backup('daily')
-    if not backup_info['weekly_backup']['exists']:
-        create_immediate_backup('weekly')
-    
-    # Start the scheduler
-    start_scheduler()
 
 # Initialize Twilio client
 if all([Config.TWILIO_ACCOUNT_SID, Config.TWILIO_AUTH_TOKEN, Config.TWILIO_PHONE_NUMBER]):
