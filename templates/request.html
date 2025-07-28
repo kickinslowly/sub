@@ -11,6 +11,7 @@
     <link rel="stylesheet" type="text/css" href="https://npmcdn.com/flatpickr/dist/themes/material_blue.css">
     <!-- Shared CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='images/favicon.png') }}">
     <style>
         /* Lottie overlay styles */
         .lottie-overlay {
@@ -116,7 +117,6 @@
             </div>
 
             <button type="submit" id="submitBtn" class="btn btn-primary w-100">
-                <span class="spinner d-none"></span>
                 <span class="btn-text">{% if edit_mode %}Update Request{% else %}Submit Request{% endif %}</span>
             </button>
         </form>
@@ -133,8 +133,8 @@
     </footer>
 
     <!-- Toast Notification -->
-    <div class="centered-toast-container">
-        <div id="toastRequestSubmitted" class="centered-toast">
+    <div class="centered-toast-container" style="z-index: 10000;">
+        <div id="toastRequestSubmitted" class="centered-toast" style="display: none; background-color: #28a745; color: white; padding: 15px 20px; border-radius: 5px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); font-weight: bold; font-size: 16px;">
             Request submitted successfully! Key stakeholders will be notified.
         </div>
     </div>
@@ -310,8 +310,7 @@
                 lottieOverlay.classList.add('active');
             } catch (error) {
                 console.error("Error creating Lottie animation:", error);
-                // Fallback to spinner if Lottie fails
-                lottieContainer.innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size: 48px;"></i>';
+                // No fallback spinner, just show the overlay
                 lottieOverlay.classList.add('active');
             }
 
@@ -338,12 +337,33 @@
                     const lottieOverlay = document.getElementById('lottie-overlay');
                     lottieOverlay.classList.remove('active');
                     
-                    // Reset button state before submitting (for better UX if there's a page refresh)
+                    // Reset button state
                     btnText.innerHTML = '{% if edit_mode %}Update Request{% else %}Submit Request{% endif %}';
                     submitBtn.disabled = false;
 
-                    document.getElementById('subRequestForm').submit();
-                }, 1500); // 1.5-second delay after toast shows
+                    // Get form data
+                    const form = document.getElementById('subRequestForm');
+                    const formData = new FormData(form);
+                    
+                    // Submit form data using fetch API
+                    fetch(form.action || window.location.href, {
+                        method: 'POST',
+                        body: formData,
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        redirect: 'manual' // Prevent automatic redirect
+                    })
+                    .then(response => {
+                        // After successful submission, redirect to dashboard
+                        window.location.href = '/dashboard';
+                    })
+                    .catch(error => {
+                        console.error('Error submitting form:', error);
+                        // If there's an error, submit the form normally as fallback
+                        form.submit();
+                    });
+                }, 2000); // 2-second delay after toast shows
             }, 1000); // 1-second delay to show loading state
         }
     </script>

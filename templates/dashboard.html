@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <link rel="stylesheet" type="text/css" href="https://npmcdn.com/flatpickr/dist/themes/material_blue.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='images/favicon.png') }}">
 </head>
 <body>
     <header>
@@ -361,12 +362,15 @@
     </div>
 
     <!-- Delete Request Form (Hidden) -->
-    <form id="delete-form" method="POST" style="display: none;"></form>
+    <form id="delete-form" method="POST" style="display: none;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        </form>
 
     <!-- Include shared JavaScript files -->
     <script src="{{ url_for('static', filename='js/tabs.js') }}"></script>
     <script src="{{ url_for('static', filename='js/toasts.js') }}"></script>
     <script src="{{ url_for('static', filename='js/refresh.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/favicon-switcher.js') }}"></script>
     
     <!-- JavaScript for dashboard functionality -->
     <script>

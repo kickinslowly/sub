@@ -303,6 +303,10 @@ def is_authenticated(required_role=None):
 def index():
     return render_template('login.html')
 
+@app.route('/health')
+def health_check():
+    return 'OK', 200
+
 @app.route('/signup', methods=['POST'])
 @limiter.limit("5 per minute")
 def signup():
@@ -1599,90 +1603,109 @@ def manage_users():
 
 @app.route('/sub_request/<token>/accept', methods=['POST'])
 def accept_sub_request(token):
-    sub_request = SubstituteRequest.query.filter_by(token=token).first()
+    try:
+        sub_request = SubstituteRequest.query.filter_by(token=token).first()
 
-    if not sub_request:
-        return jsonify({"status": "error", "message": "Invalid request"}), 404
+        if not sub_request:
+            return jsonify({"status": "error", "message": "Invalid request"}), 404
 
-    if sub_request.status != "Open":
-        return jsonify({"status": "error", "message": "This position has already been filled"}), 400
+        if sub_request.status != "Open":
+            return jsonify({"status": "error", "message": "This position has already been filled"}), 400
 
-    # Assign the logged-in user (substitute) to the request
-    logged_in_user = get_logged_in_user()
-    if not logged_in_user or logged_in_user.role != "substitute":
-        return jsonify({"status": "error", "message": "Unauthorized action"}), 403
+        # Assign the logged-in user (substitute) to the request
+        logged_in_user = get_logged_in_user()
+        if not logged_in_user or logged_in_user.role != "substitute":
+            return jsonify({"status": "error", "message": "Unauthorized action"}), 403
 
-    sub_request.status = "Filled"
-    sub_request.substitute_id = logged_in_user.id
-    db.session.commit()
-
-    # Fetch the teacher information
-    teacher = User.query.get(sub_request.teacher_id)
-
-    # Import helper functions for email templates, email/SMS sending, and background threading
-    from helpers import generate_admin_sub_filled_email, generate_teacher_sub_filled_email, generate_substitute_confirmation_email, send_email, send_sms
-    from threading_utils import run_in_background
-    from pdf_handler import generate_absence_form_data, fill_absence_form
-
-    # 1. Email to level 2 admins associated with the same school as the request
-    # This ensures notifications are only sent to admins who are responsible for the specific school
-    # If no school is specified, no notifications are sent
-    admin_subject, admin_email_body = generate_admin_sub_filled_email(teacher, sub_request, logged_in_user)
-    
-    # Get the school ID from the substitute request
-    school_id = sub_request.school_id
-    
-    # SMS notification is shorter due to character limitations
-    from helpers import generate_admin_sub_filled_sms
-    admin_sms_body = generate_admin_sub_filled_sms(teacher, sub_request, logged_in_user.name)
-    
-    if school_id:
-        # Filter level 2 admins by school using the user_schools association table
-        # This targets notifications only to admins associated with this school
-        level2_admins = User.query.filter_by(role='admin_l2').join(
-            user_schools, User.id == user_schools.c.user_id
-        ).filter(
-            user_schools.c.school_id == school_id
-        ).all()
-        
-        for admin in level2_admins:
-            # Run email sending in background thread
-            run_in_background(send_email, admin_subject, admin.email, admin_email_body)
-            
-            # Run SMS sending in background thread if phone number is available
-            if admin.phone:
-                run_in_background(send_sms, admin.phone, admin_sms_body)
-
-    # 2. Email to teacher
-    teacher_subject, teacher_email_body = generate_teacher_sub_filled_email(sub_request, logged_in_user)
-    # Run email sending in background thread
-    run_in_background(send_email, teacher_subject, teacher.email, teacher_email_body)
-
-    # 3. Email to substitute
-    sub_subject, sub_email_body = generate_substitute_confirmation_email(teacher, sub_request)
-    # Run email sending in background thread
-    run_in_background(send_email, sub_subject, logged_in_user.email, sub_email_body)
-    
-    # Generate and fill absence report PDF in background thread
-    def generate_pdf_in_background():
         try:
-            # Format the date for the PDF filename (YYYY-MM-DD)
-            request_date = sub_request.date.strftime("%Y-%m-%d")
-            
-            # Generate form data from the request
-            form_data = generate_absence_form_data(sub_request, teacher, logged_in_user)
-            
-            # Fill the PDF form
-            pdf_path = fill_absence_form(teacher.name, request_date, form_data)
-            
-            logger.info(f"Absence report PDF generated successfully: {pdf_path}")
+            sub_request.status = "Filled"
+            sub_request.substitute_id = logged_in_user.id
+            db.session.commit()
         except Exception as e:
-            logger.error(f"Error generating absence report PDF: {e}")
-    
-    # Run PDF generation in background thread
-    run_in_background(generate_pdf_in_background)
+            db.session.rollback()
+            logger.error(f"Database error when updating substitute request: {e}")
+            return jsonify({"status": "error", "message": "Database error occurred. Please try again."}), 500
 
-    return jsonify({"status": "success", "message": "Position accepted!"})
+        try:
+            # Fetch the teacher information
+            teacher = User.query.get(sub_request.teacher_id)
+            if not teacher:
+                logger.error(f"Teacher with ID {sub_request.teacher_id} not found")
+                return jsonify({"status": "error", "message": "Teacher information not found"}), 500
+
+            # Import helper functions for email templates, email/SMS sending, and background threading
+            from helpers import generate_admin_sub_filled_email, generate_teacher_sub_filled_email, generate_substitute_confirmation_email, send_email, send_sms
+            from threading_utils import run_in_background
+            from pdf_handler import generate_absence_form_data, fill_absence_form
+
+            # 1. Email to level 2 admins associated with the same school as the request
+            # This ensures notifications are only sent to admins who are responsible for the specific school
+            # If no school is specified, no notifications are sent
+            admin_subject, admin_email_body = generate_admin_sub_filled_email(teacher, sub_request, logged_in_user)
+            
+            # Get the school ID from the substitute request
+            school_id = sub_request.school_id
+            
+            # SMS notification is shorter due to character limitations
+            from helpers import generate_admin_sub_filled_sms
+            admin_sms_body = generate_admin_sub_filled_sms(teacher, sub_request, logged_in_user.name)
+            
+            if school_id:
+                # Filter level 2 admins by school using the user_schools association table
+                # This targets notifications only to admins associated with this school
+                level2_admins = User.query.filter_by(role='admin_l2').join(
+                    user_schools, User.id == user_schools.c.user_id
+                ).filter(
+                    user_schools.c.school_id == school_id
+                ).all()
+                
+                for admin in level2_admins:
+                    # Run email sending in background thread
+                    run_in_background(send_email, admin_subject, admin.email, admin_email_body)
+                    
+                    # Run SMS sending in background thread if phone number is available
+                    if admin.phone:
+                        run_in_background(send_sms, admin.phone, admin_sms_body)
+
+            # 2. Email to teacher
+            teacher_subject, teacher_email_body = generate_teacher_sub_filled_email(sub_request, logged_in_user)
+            # Run email sending in background thread
+            run_in_background(send_email, teacher_subject, teacher.email, teacher_email_body)
+
+            # 3. Email to substitute
+            sub_subject, sub_email_body = generate_substitute_confirmation_email(teacher, sub_request)
+            # Run email sending in background thread
+            run_in_background(send_email, sub_subject, logged_in_user.email, sub_email_body)
+            
+            # Generate and fill absence report PDF in background thread
+            def generate_pdf_in_background():
+                try:
+                    # Format the date for the PDF filename (YYYY-MM-DD)
+                    request_date = sub_request.date.strftime("%Y-%m-%d")
+                    
+                    # Generate form data from the request
+                    form_data = generate_absence_form_data(sub_request, teacher, logged_in_user)
+                    
+                    # Fill the PDF form
+                    pdf_path = fill_absence_form(teacher.name, request_date, form_data)
+                    
+                    logger.info(f"Absence report PDF generated successfully: {pdf_path}")
+                except Exception as e:
+                    logger.error(f"Error generating absence report PDF: {e}")
+            
+            # Run PDF generation in background thread
+            run_in_background(generate_pdf_in_background)
+
+            return jsonify({"status": "success", "message": "Position accepted!"})
+            
+        except Exception as e:
+            logger.error(f"Error in accept_sub_request after database commit: {e}")
+            # Even if notifications fail, the request has been accepted, so return success
+            return jsonify({"status": "success", "message": "Position accepted! (Notification error occurred)"}), 200
+            
+    except Exception as e:
+        logger.error(f"Unexpected error in accept_sub_request: {e}")
+        return jsonify({"status": "error", "message": "An unexpected error occurred. Please try again."}), 500
 
 
 @app.route('/add_user', methods=['POST'])

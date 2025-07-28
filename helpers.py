@@ -50,6 +50,7 @@ def calculate_hours_from_time_range(time_range):
 def calculate_total_hours_out(requests):
     """
     Calculate the total hours out from a list of substitute requests
+    Only includes filled requests (status != "Open")
     
     :param requests: List of SubstituteRequest objects
     :return: Float representing the total hours
@@ -57,8 +58,10 @@ def calculate_total_hours_out(requests):
     total_hours = 0.0
     
     for request in requests:
-        hours = calculate_hours_from_time_range(request.time)
-        total_hours += hours
+        # Only include filled requests (status != "Open")
+        if request.status != "Open":
+            hours = calculate_hours_from_time_range(request.time)
+            total_hours += hours
     
     return round(total_hours, 2)
 
