@@ -3771,3 +3771,5 @@ WHERE "user".organization_id = 1 AND "user".role = 'substitute' AND user_schools
 2025-07-28 13:01:42,908 INFO: 127.0.0.1 - - [28/Jul/2025 13:01:42] "[36mGET /static/js/favicon-switcher.js HTTP/1.1[0m" 304 - [in D:\PyCharm Projects\sub\.venv\lib\site-packages\werkzeug\_internal.py:97]
 2025-07-28 13:01:43,851 INFO: 127.0.0.1 - - [28/Jul/2025 13:01:43] "GET /super_admin/manage_organizations HTTP/1.1" 200 - [in D:\PyCharm Projects\sub\.venv\lib\site-packages\werkzeug\_internal.py:97]
 2025-07-28 13:01:43,864 INFO: 127.0.0.1 - - [28/Jul/2025 13:01:43] "[36mGET /static/css/styles.css HTTP/1.1[0m" 304 - [in D:\PyCharm Projects\sub\.venv\lib\site-packages\werkzeug\_internal.py:97]
+2025-07-28 15:29:25,896 INFO: Application startup [in D:\PyCharm Projects\sub\logging_config.py:35]
+2025-07-28 15:29:25,896 INFO: Application startup [in D:\PyCharm Projects\sub\logging_config.py:35]

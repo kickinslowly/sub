@@ -8,7 +8,12 @@ class Config:
     # Use environment variables without fallbacks for sensitive information
     SECRET_KEY = os.environ.get('SECRET_KEY')
 
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:///portal.db')
+    # Fix for Render PostgreSQL URLs
+    database_url = os.environ.get('DATABASE_URL')
+    if database_url and database_url.startswith('postgres://'):
+        database_url = database_url.replace('postgres://', 'postgresql://', 1)
+
+    SQLALCHEMY_DATABASE_URI = database_url or 'sqlite:///portal.db'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # Google OAuth credentials
