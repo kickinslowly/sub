@@ -24,7 +24,8 @@ from message_templates import (
     generate_admin_sub_filled_email,
     generate_teacher_sub_filled_email,
     generate_substitute_confirmation_email,
-    generate_admin_sub_filled_sms
+    generate_admin_sub_filled_sms,
+    generate_substitute_confirmation_sms
 )
 
 # Initialize Flask app
@@ -1250,6 +1251,12 @@ def request_form_and_submit():
                     )
                     # Run email sending in background thread
                     run_in_background(send_email, email_subject, substitute.email, email_body)
+                    
+                    # Send SMS to eligible substitutes with phones
+                    if substitute.phone:
+                        sms_body = generate_substitute_notification_sms(teacher, date, time, grade_name, subject_name, request_link)
+                        # Run SMS sending in background thread
+                        run_in_background(send_sms, substitute.phone, sms_body)
 
                 # Send notification to admin via email
                 admin_subject, admin_email_body = generate_admin_notification_email(
@@ -1375,6 +1382,11 @@ def view_sub_request(token):
         sub_subject, sub_email_body = generate_substitute_confirmation_email(teacher, sub_request)
         # Run email sending in background thread
         run_in_background(send_email, sub_subject, logged_in_user.email, sub_email_body)
+        
+        # Send SMS to substitute if they have a phone number
+        if logged_in_user.phone:
+            sub_sms_body = generate_substitute_confirmation_sms(teacher, sub_request)
+            run_in_background(send_sms, logged_in_user.phone, sub_sms_body)
 
         flash("You have successfully accepted the sub request.")
         return redirect(url_for('view_sub_request', token=token))
@@ -1701,6 +1713,11 @@ def accept_sub_request(token):
             sub_subject, sub_email_body = generate_substitute_confirmation_email(teacher, sub_request)
             # Run email sending in background thread
             run_in_background(send_email, sub_subject, logged_in_user.email, sub_email_body)
+            
+            # Send SMS to substitute if they have a phone number
+            if logged_in_user.phone:
+                sub_sms_body = generate_substitute_confirmation_sms(teacher, sub_request)
+                run_in_background(send_sms, logged_in_user.phone, sub_sms_body)
             
             # Generate and fill absence report PDF in background thread
             def generate_pdf_in_background():

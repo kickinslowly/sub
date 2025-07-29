@@ -146,7 +146,7 @@ def generate_substitute_notification_sms(teacher, date, time, grade_name, subjec
     """
     Generates SMS content for notifying substitutes about new requests.
     """
-    return f"[EZ-Sub] New sub request: Teacher {teacher.name}, Date {date}, Time {time}, Grade {grade_name}, Subject {subject_name}. Accept at: {request_link}"
+    return f"[EZ-Sub] New sub request: Teacher: {teacher.name}, Date Needed: {date}, Time: {time}, Grade: {grade_name}, Subject: {subject_name}. Accept at: {request_link}"
 
 
 def generate_admin_notification_sms(teacher, date, time, grade_name, subject_name, reason):
