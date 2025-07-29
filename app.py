@@ -107,43 +107,60 @@ def seed_database():
     Seed the database with initial values for grades and subjects
     if they don't already exist.
     """
-    # Seed grades
-    grades = [
-        {'id': 1, 'name': 'K'},
-        {'id': 2, 'name': '1'},
-        {'id': 3, 'name': '2'},
-        {'id': 4, 'name': '3'},
-        {'id': 5, 'name': '4'},
-        {'id': 6, 'name': '5'},
-        {'id': 7, 'name': 'Mid'},
-        {'id': 8, 'name': 'High'},
-        {'id': 9, 'name': 'All'},
-    ]
+    try:
+        logger.info("Starting database seeding...")
+        
+        # Seed grades
+        grades = [
+            {'id': 1, 'name': 'K'},
+            {'id': 2, 'name': '1'},
+            {'id': 3, 'name': '2'},
+            {'id': 4, 'name': '3'},
+            {'id': 5, 'name': '4'},
+            {'id': 6, 'name': '5'},
+            {'id': 7, 'name': 'Mid'},
+            {'id': 8, 'name': 'High'},
+            {'id': 9, 'name': 'All'},
+        ]
 
-    for grade in grades:
-        # Check if the grade already exists before inserting
-        if not Grade.query.filter_by(id=grade['id']).first():
-            db.session.add(Grade(id=grade['id'], name=grade['name']))
+        for grade in grades:
+            # Check if the grade already exists before inserting
+            if not Grade.query.filter_by(id=grade['id']).first():
+                db.session.add(Grade(id=grade['id'], name=grade['name']))
+                logger.debug(f"Added grade: {grade['name']}")
 
-    # Seed subjects
-    subjects = [
-        {'id': 1, 'name': 'Math'},
-        {'id': 2, 'name': 'Science'},
-        {'id': 3, 'name': 'English'},
-        {'id': 4, 'name': 'History'},
-        {'id': 5, 'name': 'PE'},
-        {'id': 6, 'name': 'Art'},
-        {'id': 7, 'name': 'Music'},
-        {'id': 8, 'name': 'All'},
-    ]
+        # Seed subjects
+        subjects = [
+            {'id': 1, 'name': 'Math'},
+            {'id': 2, 'name': 'Science'},
+            {'id': 3, 'name': 'English'},
+            {'id': 4, 'name': 'History'},
+            {'id': 5, 'name': 'PE'},
+            {'id': 6, 'name': 'Art'},
+            {'id': 7, 'name': 'Music'},
+            {'id': 8, 'name': 'All'},
+        ]
 
-    for subject in subjects:
-        # Check if the subject already exists before inserting
-        if not Subject.query.filter_by(id=subject['id']).first():
-            db.session.add(Subject(id=subject['id'], name=subject['name']))
+        for subject in subjects:
+            # Check if the subject already exists before inserting
+            if not Subject.query.filter_by(id=subject['id']).first():
+                db.session.add(Subject(id=subject['id'], name=subject['name']))
+                logger.debug(f"Added subject: {subject['name']}")
 
-    # Commit changes only if we have added new data
-    db.session.commit()
+        # Commit changes only if we have added new data
+        db.session.commit()
+        logger.info("Database seeding completed successfully")
+        
+    except sqlalchemy.exc.ProgrammingError as e:
+        logger.warning(f"Tables not ready for seeding: {e}")
+        db.session.rollback()
+        # We'll retry later when tables are created
+    except sqlalchemy.exc.SQLAlchemyError as e:
+        logger.error(f"Database error during seeding: {e}")
+        db.session.rollback()
+    except Exception as e:
+        logger.error(f"Unexpected error during database seeding: {e}")
+        db.session.rollback()
 
 
 # Note: Manual schema updates have been removed.
@@ -151,35 +168,45 @@ def seed_database():
 # To create a new migration: flask db migrate -m "Description of changes"
 # To apply migrations: flask db upgrade
 
-# Initialize the database
-with app.app_context():
-    # Note: Manual schema updates have been removed.
-    # All schema changes are now handled through Alembic migrations.
-    # Run 'flask db upgrade' to apply any pending migrations.
-    
-    # Seed the database with initial data
-    seed_database()  # Seed the database with default data
-    
-    # Check if super_admin exists, if not create one
-    logger.debug("Checking for super_admin user...")
-    super_admin = User.query.filter_by(role='super_admin').first()
-    if not super_admin:
-        logger.info("No super_admin found. Creating super_admin user: Aaron Allen")
-        # Get the default organization
-        default_org = Organization.query.filter_by(name="Point Arena Schools").first()
-        
-        # Create super_admin user
-        super_admin = User(
-            name="Aaron Allen",
-            email="kickinslowly@gmail.com",
-            role="super_admin",
-            organization_id=default_org.id if default_org else None
-        )
-        
-        db.session.add(super_admin)
-        db.session.commit()
-        logger.info("Super admin user created successfully")
+# Database initialization has been moved to the before_first_request handler
+# This ensures that migrations are applied before we try to seed the database
+# See the initialize_database() function below
 
+
+# Add before_first_request handler to initialize database after app starts
+@app.before_first_request
+def initialize_database():
+    """
+    Initialize the database after the first request.
+    This ensures that all migrations have been applied before we try to seed the database.
+    """
+    logger.info("Initializing database after first request...")
+    try:
+        # Seed the database with initial data
+        seed_database()
+        
+        # Check if super_admin exists, if not create one
+        logger.debug("Checking for super_admin user...")
+        super_admin = User.query.filter_by(role='super_admin').first()
+        if not super_admin:
+            logger.info("No super_admin found. Creating super_admin user: Aaron Allen")
+            # Get the default organization
+            default_org = Organization.query.filter_by(name="Point Arena Schools").first()
+            
+            # Create super_admin user
+            super_admin = User(
+                name="Aaron Allen",
+                email="kickinslowly@gmail.com",
+                role="super_admin",
+                organization_id=default_org.id if default_org else None
+            )
+            
+            db.session.add(super_admin)
+            db.session.commit()
+            logger.info("Super admin user created successfully")
+    except Exception as e:
+        logger.error(f"Error initializing database: {e}")
+        # Don't raise the exception - we want the application to continue running
 
 # Google OAuth setup
 google = oauth.register(
