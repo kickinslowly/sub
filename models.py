@@ -28,32 +28,33 @@ class School(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), nullable=False)  # School name
     code = db.Column(db.String(20), nullable=False)  # School code like 'AUES'
-    level1_admin_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)  # Reference to Level 1 Admin
+    level1_admin_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)  # Reference to Level 1 Admin
     organization_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=True)  # Reference to Organization
 
 
 # Association table for User <-> Grade (Many-to-Many)
 user_grades = db.Table('user_grades',
-    db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
+    db.Column('user_id', db.Integer, db.ForeignKey('users.id'), primary_key=True),
     db.Column('grade_id', db.Integer, db.ForeignKey('grade.id'), primary_key=True)
 )
 
 
 # Association table for User <-> Subject (Many-to-Many)
 user_subjects = db.Table('user_subjects',
-    db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
+    db.Column('user_id', db.Integer, db.ForeignKey('users.id'), primary_key=True),
     db.Column('subject_id', db.Integer, db.ForeignKey('subject.id'), primary_key=True)
 )
 
 
 # Association table for User <-> School (Many-to-Many)
 user_schools = db.Table('user_schools',
-    db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
+    db.Column('user_id', db.Integer, db.ForeignKey('users.id'), primary_key=True),
     db.Column('school_id', db.Integer, db.ForeignKey('school.id'), primary_key=True)
 )
 
 
 class User(db.Model):
+    __tablename__ = 'users'  # Change from default "user" to "users"
     id = Column(Integer, primary_key=True)
     name = db.Column(db.String(120))
     email = Column(String(120), nullable=False)
@@ -62,7 +63,7 @@ class User(db.Model):
     timezone = Column(String(50), nullable=True, default='UTC')  # User's timezone
     
     # Track who created this user (for admin hierarchy)
-    created_by = Column(Integer, ForeignKey('user.id'), nullable=True)
+    created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
     
     # Organization relationship
     organization_id = Column(Integer, ForeignKey('organization.id'), nullable=True)
@@ -75,7 +76,7 @@ class User(db.Model):
 
 class SubstituteUnavailability(db.Model):
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('user.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     date = Column(Date, nullable=False)
     all_day = Column(Boolean, default=True)  # True if unavailable all day, False if specific hours
     time_range = Column(String(50), nullable=True)  # Format: "08:00-12:00" (if all_day is False)
@@ -89,13 +90,13 @@ class SubstituteUnavailability(db.Model):
 
 class SubstituteRequest(db.Model):
     id = Column(Integer, primary_key=True)
-    teacher_id = Column(Integer, ForeignKey('user.id'), nullable=False)
+    teacher_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     date = Column(Date, nullable=False)
     time = Column(String(50), nullable=False)
     details = Column(Text, nullable=True)
     reason = Column(String(20), nullable=True)  # Options: Personal, Medical, Sickness, School Business
     status = Column(String(20), default='Open')
-    substitute_id = Column(Integer, ForeignKey('user.id'), nullable=True)
+    substitute_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     substitute_user = relationship("User", foreign_keys=[substitute_id])
     grade_id = Column(Integer, ForeignKey('grade.id'), nullable=True)
     subject_id = Column(Integer, ForeignKey('subject.id'), nullable=True)
