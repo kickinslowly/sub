@@ -168,45 +168,54 @@ def seed_database():
 # To create a new migration: flask db migrate -m "Description of changes"
 # To apply migrations: flask db upgrade
 
-# Database initialization has been moved to the before_first_request handler
+# Database initialization has been moved to the after_request handler
 # This ensures that migrations are applied before we try to seed the database
-# See the initialize_database() function below
+# See the initialize_database_after_first_request() function below
 
 
-# Add before_first_request handler to initialize database after app starts
-@app.before_first_request
-def initialize_database():
+# Add after_request handler to initialize database after the first request
+# This replaces the deprecated before_first_request decorator which was removed in Flask 2.3+
+@app.after_request
+def initialize_database_after_first_request(response):
     """
     Initialize the database after the first request.
     This ensures that all migrations have been applied before we try to seed the database.
+    The function only runs once per application lifecycle.
     """
-    logger.info("Initializing database after first request...")
-    try:
-        # Seed the database with initial data
-        seed_database()
-        
-        # Check if super_admin exists, if not create one
-        logger.debug("Checking for super_admin user...")
-        super_admin = User.query.filter_by(role='super_admin').first()
-        if not super_admin:
-            logger.info("No super_admin found. Creating super_admin user: Aaron Allen")
-            # Get the default organization
-            default_org = Organization.query.filter_by(name="Point Arena Schools").first()
+    if not getattr(app, '_database_initialized', False):
+        logger.info("Initializing database after first request...")
+        with app.app_context():
+            try:
+                # Seed the database with initial data
+                seed_database()
+                
+                # Check if super_admin exists, if not create one
+                logger.debug("Checking for super_admin user...")
+                super_admin = User.query.filter_by(role='super_admin').first()
+                if not super_admin:
+                    logger.info("No super_admin found. Creating super_admin user: Aaron Allen")
+                    # Get the default organization
+                    default_org = Organization.query.filter_by(name="Point Arena Schools").first()
+                    
+                    # Create super_admin user
+                    super_admin = User(
+                        name="Aaron Allen",
+                        email="kickinslowly@gmail.com",
+                        role="super_admin",
+                        organization_id=default_org.id if default_org else None
+                    )
+                    
+                    db.session.add(super_admin)
+                    db.session.commit()
+                    logger.info("Super admin user created successfully")
+            except Exception as e:
+                logger.error(f"Error initializing database: {e}")
+                # Don't raise the exception - we want the application to continue running
             
-            # Create super_admin user
-            super_admin = User(
-                name="Aaron Allen",
-                email="kickinslowly@gmail.com",
-                role="super_admin",
-                organization_id=default_org.id if default_org else None
-            )
-            
-            db.session.add(super_admin)
-            db.session.commit()
-            logger.info("Super admin user created successfully")
-    except Exception as e:
-        logger.error(f"Error initializing database: {e}")
-        # Don't raise the exception - we want the application to continue running
+            # Mark as initialized so we don't run this again
+            app._database_initialized = True
+    
+    return response
 
 # Google OAuth setup
 google = oauth.register(
