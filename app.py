@@ -1691,6 +1691,12 @@ def accept_sub_request(token):
             # Run email sending in background thread
             run_in_background(send_email, teacher_subject, teacher.email, teacher_email_body)
 
+            # Send SMS to teacher if phone number is available
+            from message_templates import generate_teacher_sub_filled_sms
+            if teacher.phone:
+                teacher_sms_body = generate_teacher_sub_filled_sms(sub_request, logged_in_user.name)
+                run_in_background(send_sms, teacher.phone, teacher_sms_body)
+
             # 3. Email to substitute
             sub_subject, sub_email_body = generate_substitute_confirmation_email(teacher, sub_request)
             # Run email sending in background thread
