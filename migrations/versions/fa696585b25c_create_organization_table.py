@@ -42,7 +42,7 @@ def upgrade():
     default_org_id = conn.execute(sa.text("SELECT id FROM organization WHERE name = 'Point Arena Schools'")).fetchone()[0]
     
     # Update users
-    conn.execute(sa.text(f"UPDATE user SET organization_id = {default_org_id} WHERE organization_id IS NULL"))
+    conn.execute(sa.text(f"UPDATE users SET organization_id = {default_org_id} WHERE organization_id IS NULL"))
     
     # Update schools
     conn.execute(sa.text(f"UPDATE school SET organization_id = {default_org_id} WHERE organization_id IS NULL"))

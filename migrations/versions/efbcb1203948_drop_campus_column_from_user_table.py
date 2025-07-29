@@ -18,11 +18,11 @@ depends_on = None
 
 def upgrade():
     # Drop the campus column from the user table
-    with op.batch_alter_table('user', schema=None) as batch_op:
+    with op.batch_alter_table('users', schema=None) as batch_op:
         batch_op.drop_column('campus')
 
 
 def downgrade():
     # Add the campus column back to the user table if needed
-    with op.batch_alter_table('user', schema=None) as batch_op:
+    with op.batch_alter_table('users', schema=None) as batch_op:
         batch_op.add_column(sa.Column('campus', sa.VARCHAR(length=20), nullable=True))

@@ -27,7 +27,7 @@ def upgrade():
         sa.Column('repeat_pattern', sa.String(length=20), nullable=True),
         sa.Column('repeat_until', sa.Date(), nullable=True),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
-        sa.ForeignKeyConstraint(['user_id'], ['user.id'], name='fk_substitute_unavailability_user_id'),
+        sa.ForeignKeyConstraint(['user_id'], ['users.id'], name='fk_substitute_unavailability_user_id'),
         sa.PrimaryKeyConstraint('id', name='pk_substitute_unavailability')
     )
     # Create index on user_id for faster lookups
