@@ -175,3 +175,10 @@ def generate_teacher_sub_filled_sms(sub_request, substitute_name):
     Generates SMS content for notifying teachers when their substitute request is filled.
     """
     return f"[EZ-Sub] Good news! Your sub request for {sub_request.date.strftime('%B %d, %Y')}, {sub_request.time} has been filled by {substitute_name}."
+
+
+def generate_substitute_confirmation_sms(teacher, sub_request):
+    """
+    Generates SMS content for confirming to substitutes when they accept a position.
+    """
+    return f"[EZ-Sub] You've accepted a sub position: {teacher.name}, {sub_request.date.strftime('%B %d, %Y')}, {sub_request.time}. Please arrive 10 min early."
