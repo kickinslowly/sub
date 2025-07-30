@@ -1188,17 +1188,23 @@ def request_form_and_submit():
             if teacher:
                 token = str(uuid.uuid4())  # Generate unique token
 
-                # Get grade and subject IDs from the form or auto-select if teacher has only one
+                # Get grade and subject IDs from the form or auto-select from teacher's profile
                 grade_id = request.form.get('grade_id')
                 subject_id = request.form.get('subject_id')
                 
-                # If grade_id is not provided and teacher has exactly one grade, use that grade
-                if not grade_id and len(teacher.grades) == 1:
+                # For teachers, automatically use their first grade
+                if not grade_id and teacher.grades:
                     grade_id = teacher.grades[0].id
+                elif not grade_id:
+                    flash('Error: No grade associated with your account.')
+                    return redirect(url_for('request_form_and_submit'))
                 
-                # If subject_id is not provided and teacher has exactly one subject, use that subject
-                if not subject_id and len(teacher.subjects) == 1:
+                # For teachers, automatically use their first subject
+                if not subject_id and teacher.subjects:
                     subject_id = teacher.subjects[0].id
+                elif not subject_id:
+                    flash('Error: No subject associated with your account.')
+                    return redirect(url_for('request_form_and_submit'))
 
                 try:
                     # Create and save substitute request
