@@ -25,12 +25,35 @@
             {% endif %}
             <div class="header-actions">
                 <span class="welcome-text">Welcome, {{ user.name }}</span>
+                <span class="admin-level-badge {% if is_tech_coordinator_value %}admin-l1{% else %}admin-l2{% endif %}">
+                    {% if is_tech_coordinator_value %}
+                    <i class="fas fa-shield-alt"></i> Level 1 Admin
+                    {% else %}
+                    <i class="fas fa-user-shield"></i> Level 2 Admin
+                    {% endif %}
+                </span>
                 <a href="/logout" class="btn btn-danger"><i class="fas fa-sign-out-alt"></i> Logout</a>
             </div>
         </div>
     </header>
     
     <div class="container-fluid">
+        
+        <!-- Admin Level Information -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2><i class="fas fa-info-circle"></i> Admin Access Level Information</h2>
+            </div>
+            <div class="card-body">
+                <div class="alert {% if is_tech_coordinator_value %}alert-warning{% else %}alert-info{% endif %}">
+                    {% if is_tech_coordinator_value %}
+                    <p><strong><i class="fas fa-shield-alt"></i> Level 1 Admin (Tech Coordinator):</strong> You have full administrative access to manage all users, schools, and admin accounts across the entire organization.</p>
+                    {% else %}
+                    <p><strong><i class="fas fa-user-shield"></i> Level 2 Admin:</strong> You have limited administrative access. You can only view and manage data for schools assigned to your account. Some administrative functions are restricted to Level 1 Admins.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
 
         <!-- Quick Actions Section -->
         <div class="card mb-4">
@@ -45,7 +68,11 @@
                             <h2><i class="fas fa-users"></i> User Management</h2>
                         </div>
                         <div class="card-body">
-                            <p class="card-text">Manage accounts for teachers and substitutes.</p>
+                            {% if is_tech_coordinator_value %}
+                            <p class="card-text">Manage accounts for teachers and substitutes across all schools.</p>
+                            {% else %}
+                            <p class="card-text">Manage accounts for teachers and substitutes in your assigned schools.</p>
+                            {% endif %}
                             <a href="/manage_users" class="btn btn-primary w-100">
                                 <i class="fas fa-user-cog"></i> Manage Users
                             </a>
@@ -86,7 +113,11 @@
                             <h2><i class="fas fa-calendar-plus"></i> Create Substitute Request</h2>
                         </div>
                         <div class="card-body">
-                            <p class="card-text">Create a new substitute request for a teacher.</p>
+                            {% if is_tech_coordinator_value %}
+                            <p class="card-text">Create a new substitute request for any teacher.</p>
+                            {% else %}
+                            <p class="card-text">Create a new substitute request for teachers in your assigned schools.</p>
+                            {% endif %}
                             <a href="/admin_request" class="btn btn-primary w-100">
                                 <i class="fas fa-calendar-plus"></i> Create Request
                             </a>

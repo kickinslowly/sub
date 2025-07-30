@@ -2132,3 +2132,28 @@ body.modal-open {
     display: none;
     animation: slideIn 0.3s ease;
 }
+/* ===== Admin Level Badge Styles ===== */
+.admin-level-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.3rem 0.7rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-right: 1rem;
+    color: white;
+}
+
+.admin-level-badge i {
+    margin-right: 0.3rem;
+}
+
+.admin-level-badge.admin-l1 {
+    background-color: #ff7043; /* Orange for Level 1 */
+    border: 1px solid #e64a19;
+}
+
+.admin-level-badge.admin-l2 {
+    background-color: #5c6bc0; /* Indigo for Level 2 */
+    border: 1px solid #3949ab;
+}

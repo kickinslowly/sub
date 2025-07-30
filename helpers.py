@@ -446,7 +446,8 @@ def is_tech_coordinator(user):
     :param user: User object to check
     :return: True if the user is a tech coordinator, False otherwise
     """
-    return user.email in Config.TECH_COORDINATOR_EMAILS
+    # Check if the user has the admin_l1 role or if their email is in the tech coordinator list
+    return user.role == 'admin_l1' or user.email in Config.TECH_COORDINATOR_EMAILS
 
 
 

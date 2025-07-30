@@ -1004,6 +1004,17 @@ def admin_create_request():
             flash('Invalid teacher selected.')
             return redirect(url_for('admin_dashboard'))
             
+        # For level 2 admins, check if the teacher belongs to one of their assigned schools
+        if logged_in_user.role == 'admin_l2' and logged_in_user.schools:
+            # Get the admin's school IDs
+            admin_school_ids = [school.id for school in logged_in_user.schools]
+            
+            # Check if the teacher shares at least one school with the admin
+            teacher_school_ids = [school.id for school in teacher.schools]
+            if not any(school_id in admin_school_ids for school_id in teacher_school_ids):
+                flash('Error: You can only create requests for teachers in your assigned schools.')
+                return redirect(url_for('admin_dashboard'))
+            
         # If grade_id is not provided, try to get it from the teacher's profile
         if not grade_id and teacher.grades:
             # If teacher has only one grade, use that grade
@@ -1479,11 +1490,9 @@ def add_admin():
 
 
 @app.route('/manage_users', methods=['GET'])
+@requires_role('admin')
 def manage_users():
-    # Ensure user is authenticated
-    if 'user_info' not in session:
-        flash('Please log in to access this page.')
-        return redirect(url_for('index'))
+    # User authentication is handled by the requires_role decorator
 
     # Get sort parameters from query string
     sort_by = request.args.get('sort_by', 'id')
