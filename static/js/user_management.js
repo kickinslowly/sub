@@ -1,5 +1,5 @@
 // User Management JavaScript
-// Vanilla JavaScript replacement for Vue.js functionality
+// Completely rebuilt form validation logic
 
 // Initialize Bootstrap modals
 let addUserModal, editUserModal, deleteUserModal;
@@ -13,8 +13,7 @@ const addUserForm = {
         grades: [],
         subjects: [],
         schools: [],
-        phone: '',
-        school_id: ''
+        phone: ''
     },
     errors: {
         name: '',
@@ -34,125 +33,133 @@ const editUserForm = {
         grades: [],
         subjects: [],
         schools: [],
-        phone: '',
-        school_id: ''
+        phone: ''
     },
     errors: {
         name: '',
         email: '',
         phone: ''
     },
-    isSubmitting: false,
-    formAction: ''
+    isSubmitting: false
 };
 
 // Validation Functions
-function validateName(formObj, value) {
-    if (!value) {
-        formObj.errors.name = 'Name is required';
+function validateName(value) {
+    if (!value || value.trim() === '') {
+        return 'Name is required';
     } else if (value.length < 2) {
-        formObj.errors.name = 'Name must be at least 2 characters';
-    } else {
-        formObj.errors.name = '';
+        return 'Name must be at least 2 characters';
     }
-    return formObj.errors.name === '';
+    return '';
 }
 
-function validateEmail(formObj, value) {
+function validateEmail(value) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!value) {
-        formObj.errors.email = 'Email is required';
+    if (!value || value.trim() === '') {
+        return 'Email is required';
     } else if (!emailRegex.test(value)) {
-        formObj.errors.email = 'Please enter a valid email address';
-    } else {
-        formObj.errors.email = '';
+        return 'Please enter a valid email address';
     }
-    return formObj.errors.email === '';
+    return '';
 }
 
-function validatePhone(formObj, value) {
-    if (!value) {
-        formObj.errors.phone = '';
-        return true;
+function validatePhone(value) {
+    if (!value || value.trim() === '') {
+        return ''; // Phone is optional
     }
-
+    
     // Remove all non-digit characters for validation
     const digitsOnly = value.replace(/\D/g, '');
-
+    
     if (digitsOnly.length !== 10) {
-        formObj.errors.phone = 'Phone number must be 10 digits';
-        return false;
-    } else {
-        // Format the phone number as (XXX) XXX-XXXX
-        formObj.formData.phone = `(${digitsOnly.substring(0, 3)}) ${digitsOnly.substring(3, 6)}-${digitsOnly.substring(6)}`;
-        formObj.errors.phone = '';
-        return true;
+        return 'Phone number must be 10 digits';
     }
+    
+    return '';
 }
 
-// Form Validation
-function isFormValid(formObj) {
-    return formObj.formData.name && 
-           formObj.formData.email && 
-           !formObj.errors.name && 
-           !formObj.errors.email && 
-           !formObj.errors.phone;
+function formatPhone(value) {
+    if (!value) return '';
+    
+    // Remove all non-digit characters
+    const digitsOnly = value.replace(/\D/g, '');
+    
+    if (digitsOnly.length === 10) {
+        // Format as (XXX) XXX-XXXX
+        return `(${digitsOnly.substring(0, 3)}) ${digitsOnly.substring(3, 6)}-${digitsOnly.substring(6)}`;
+    }
+    
+    return value;
 }
 
-// UI Update Functions
-function updateValidationUI(formPrefix) {
-    const formObj = formPrefix === 'edit-' ? editUserForm : addUserForm;
+// Check if all required fields are filled
+function checkFormValidity(formPrefix) {
+    const form = formPrefix === 'edit-' ? editUserForm : addUserForm;
     
-    // Update name field
-    const nameInput = document.getElementById(`${formPrefix}name`);
-    if (formObj.errors.name) {
-        nameInput.classList.add('is-invalid');
-        document.getElementById(`${formPrefix}name-error`).textContent = formObj.errors.name;
-        document.getElementById(`${formPrefix}name-error`).style.display = 'block';
-    } else {
-        nameInput.classList.remove('is-invalid');
-        document.getElementById(`${formPrefix}name-error`).style.display = 'none';
-    }
+    // Check required fields
+    const nameValid = form.formData.name && !form.errors.name;
+    const emailValid = form.formData.email && !form.errors.email;
+    const phoneValid = !form.errors.phone; // Phone is optional but must be valid if provided
     
-    // Update email field
-    const emailInput = document.getElementById(`${formPrefix}email`);
-    if (formObj.errors.email) {
-        emailInput.classList.add('is-invalid');
-        document.getElementById(`${formPrefix}email-error`).textContent = formObj.errors.email;
-        document.getElementById(`${formPrefix}email-error`).style.display = 'block';
-    } else {
-        emailInput.classList.remove('is-invalid');
-        document.getElementById(`${formPrefix}email-error`).style.display = 'none';
-    }
-    
-    // Update phone field
-    const phoneInput = document.getElementById(`${formPrefix}phone`);
-    if (formObj.errors.phone) {
-        phoneInput.classList.add('is-invalid');
-        document.getElementById(`${formPrefix}phone-error`).textContent = formObj.errors.phone;
-        document.getElementById(`${formPrefix}phone-error`).style.display = 'block';
-        document.getElementById(`${formPrefix}phone-hint`).style.display = 'none';
-    } else {
-        phoneInput.classList.remove('is-invalid');
-        document.getElementById(`${formPrefix}phone-error`).style.display = 'none';
-        
-        // Show format hint if phone has value
-        if (formObj.formData.phone) {
-            document.getElementById(`${formPrefix}phone-hint`).style.display = 'block';
-        } else {
-            document.getElementById(`${formPrefix}phone-hint`).style.display = 'none';
-        }
-    }
-    
-    // Update submit button state
+    // Enable the submit button if all required fields are valid
     const submitBtn = document.getElementById(`${formPrefix}submit-btn`);
-    submitBtn.disabled = !isFormValid(formObj) || formObj.isSubmitting;
+    if (submitBtn) {
+        submitBtn.disabled = !(nameValid && emailValid && phoneValid) || form.isSubmitting;
+    }
     
-    // Update submit button text based on isSubmitting
+    return nameValid && emailValid && phoneValid;
+}
+
+// Update form field UI based on validation
+function updateFieldUI(fieldId, errorMessage) {
+    const field = document.getElementById(fieldId);
+    const errorElement = document.getElementById(`${fieldId}-error`);
+    
+    if (!field || !errorElement) return;
+    
+    if (errorMessage) {
+        field.classList.add('is-invalid');
+        errorElement.textContent = errorMessage;
+        errorElement.style.display = 'block';
+    } else {
+        field.classList.remove('is-invalid');
+        errorElement.textContent = '';
+        errorElement.style.display = 'none';
+    }
+}
+
+// Update phone hint display
+function updatePhoneHint(formPrefix, show) {
+    const phoneHint = document.getElementById(`${formPrefix}phone-hint`);
+    if (phoneHint) {
+        phoneHint.style.display = show ? 'block' : 'none';
+    }
+}
+
+// Update counters for selected items
+function updateCounter(counterId, items) {
+    const counter = document.getElementById(counterId);
+    if (!counter) return;
+    
+    if (items && items.length > 0) {
+        const itemType = counterId.includes('grades') ? 'grade(s)' : 
+                         counterId.includes('subjects') ? 'subject(s)' : 'school(s)';
+        counter.textContent = `Selected: ${items.length} ${itemType}`;
+        counter.style.display = 'block';
+    } else {
+        counter.style.display = 'none';
+    }
+}
+
+// Update submit button state
+function updateSubmitButton(formPrefix, isSubmitting) {
+    const submitBtn = document.getElementById(`${formPrefix}submit-btn`);
     const submitBtnText = document.getElementById(`${formPrefix}submit-btn-text`);
     const submitBtnLoader = document.getElementById(`${formPrefix}submit-btn-loader`);
     
-    if (formObj.isSubmitting) {
+    if (!submitBtn || !submitBtnText || !submitBtnLoader) return;
+    
+    if (isSubmitting) {
         submitBtnText.style.display = 'none';
         submitBtnLoader.style.display = 'inline-block';
     } else {
@@ -161,220 +168,183 @@ function updateValidationUI(formPrefix) {
     }
 }
 
-// Update counters for selected items
-function updateCounters(formPrefix) {
-    const formObj = formPrefix === 'edit-' ? editUserForm : addUserForm;
+// Reset form to initial state
+function resetForm(formPrefix) {
+    const form = formPrefix === 'edit-' ? editUserForm : addUserForm;
     
-    // Update grades counter
-    const gradesCounter = document.getElementById(`${formPrefix}grades-counter`);
-    if (formObj.formData.grades.length > 0) {
-        gradesCounter.textContent = `Selected: ${formObj.formData.grades.length} grade(s)`;
-        gradesCounter.style.display = 'block';
-    } else {
-        gradesCounter.style.display = 'none';
-    }
-    
-    // Update subjects counter
-    const subjectsCounter = document.getElementById(`${formPrefix}subjects-counter`);
-    if (formObj.formData.subjects.length > 0) {
-        subjectsCounter.textContent = `Selected: ${formObj.formData.subjects.length} subject(s)`;
-        subjectsCounter.style.display = 'block';
-    } else {
-        subjectsCounter.style.display = 'none';
-    }
-    
-    // Update schools counter
-    const schoolsCounter = document.getElementById(`${formPrefix}schools-counter`);
-    if (formObj.formData.schools.length > 0) {
-        schoolsCounter.textContent = `Selected: ${formObj.formData.schools.length} school(s)`;
-        schoolsCounter.style.display = 'block';
-    } else {
-        schoolsCounter.style.display = 'none';
-    }
-}
-
-// Form Reset Functions
-function resetAddUserForm() {
-    addUserForm.formData = {
+    // Reset form data
+    form.formData = {
         name: '',
         email: '',
         role: 'teacher',
         grades: [],
         subjects: [],
         schools: [],
-        phone: '',
-        school_id: ''
+        phone: ''
     };
-    addUserForm.errors = {
+    
+    if (formPrefix === 'edit-') {
+        form.formData.userId = '';
+    }
+    
+    // Reset errors
+    form.errors = {
         name: '',
         email: '',
         phone: ''
     };
-    addUserForm.isSubmitting = false;
+    
+    form.isSubmitting = false;
     
     // Reset form fields
-    document.getElementById('name').value = '';
-    document.getElementById('email').value = '';
-    document.getElementById('role').value = 'teacher';
-    document.getElementById('phone').value = '';
+    const nameInput = document.getElementById(`${formPrefix}name`);
+    const emailInput = document.getElementById(`${formPrefix}email`);
+    const roleSelect = document.getElementById(`${formPrefix}role`);
+    const phoneInput = document.getElementById(`${formPrefix}phone`);
+    
+    if (nameInput) nameInput.value = '';
+    if (emailInput) emailInput.value = '';
+    if (roleSelect) roleSelect.value = 'teacher';
+    if (phoneInput) phoneInput.value = '';
+    
+    // Reset user ID for edit form
+    if (formPrefix === 'edit-') {
+        const userIdInput = document.getElementById('edit-user-id');
+        if (userIdInput) userIdInput.value = '';
+    }
     
     // Reset checkboxes
-    document.querySelectorAll('input[name="grades"]').forEach(checkbox => {
-        checkbox.checked = false;
-    });
-    document.querySelectorAll('input[name="subjects"]').forEach(checkbox => {
-        checkbox.checked = false;
-    });
-    document.querySelectorAll('input[name="schools"]').forEach(checkbox => {
+    document.querySelectorAll(`${formPrefix === 'edit-' ? '#edit-user-modal ' : ''}input[name="grades"]`).forEach(checkbox => {
         checkbox.checked = false;
     });
     
-    // Update UI
-    updateValidationUI('');
-    updateCounters('');
+    document.querySelectorAll(`${formPrefix === 'edit-' ? '#edit-user-modal ' : ''}input[name="subjects"]`).forEach(checkbox => {
+        checkbox.checked = false;
+    });
+    
+    document.querySelectorAll(`${formPrefix === 'edit-' ? '#edit-user-modal ' : ''}input[name="schools"]`).forEach(checkbox => {
+        checkbox.checked = false;
+    });
+    
+    // Reset UI
+    updateFieldUI(`${formPrefix}name`, '');
+    updateFieldUI(`${formPrefix}email`, '');
+    updateFieldUI(`${formPrefix}phone`, '');
+    updatePhoneHint(formPrefix, false);
+    updateCounter(`${formPrefix}grades-counter`, []);
+    updateCounter(`${formPrefix}subjects-counter`, []);
+    updateCounter(`${formPrefix}schools-counter`, []);
+    updateSubmitButton(formPrefix, false);
+    
+    // Disable submit button initially
+    const submitBtn = document.getElementById(`${formPrefix}submit-btn`);
+    if (submitBtn) submitBtn.disabled = true;
 }
 
-function resetEditUserForm() {
+// Set user data for edit form
+function setUserData(userData) {
+    // Set form data
     editUserForm.formData = {
-        userId: '',
-        name: '',
-        email: '',
-        role: 'teacher',
-        grades: [],
-        subjects: [],
-        schools: [],
-        phone: '',
-        school_id: ''
+        userId: userData.userId,
+        name: userData.name || '',
+        email: userData.email || '',
+        role: userData.role || 'teacher',
+        grades: userData.grades || [],
+        subjects: userData.subjects || [],
+        schools: userData.schools || [],
+        phone: userData.phone || ''
     };
+    
+    // Reset errors
     editUserForm.errors = {
         name: '',
         email: '',
         phone: ''
     };
-    editUserForm.isSubmitting = false;
-    editUserForm.formAction = '';
-    
-    // Reset form fields
-    document.getElementById('edit-name').value = '';
-    document.getElementById('edit-email').value = '';
-    document.getElementById('edit-role').value = 'teacher';
-    document.getElementById('edit-phone').value = '';
-    document.getElementById('edit-user-id').value = '';
-    
-    // Reset checkboxes
-    document.querySelectorAll('input[name="grades"]').forEach(checkbox => {
-        checkbox.checked = false;
-    });
-    document.querySelectorAll('input[name="subjects"]').forEach(checkbox => {
-        checkbox.checked = false;
-    });
-    document.querySelectorAll('input[name="schools"]').forEach(checkbox => {
-        checkbox.checked = false;
-    });
-    
-    // Update UI
-    updateValidationUI('edit-');
-    updateCounters('edit-');
-}
-
-// Set User Data for Edit Form
-function setUserData(userData) {
-    editUserForm.formData.userId = userData.userId;
-    editUserForm.formData.name = userData.name;
-    editUserForm.formData.email = userData.email;
-    editUserForm.formData.role = userData.role;
-    editUserForm.formData.phone = userData.phone || '';
-    editUserForm.formData.school_id = userData.school_id || '';
-    editUserForm.formData.grades = userData.grades || [];
-    editUserForm.formData.subjects = userData.subjects || [];
-    editUserForm.formData.schools = userData.schools || [];
-    editUserForm.formAction = `/edit_user/${userData.userId}`;
     
     // Set form fields
-    document.getElementById('edit-name').value = userData.name;
-    document.getElementById('edit-email').value = userData.email;
-    document.getElementById('edit-role').value = userData.role;
-    document.getElementById('edit-phone').value = userData.phone || '';
-    document.getElementById('edit-user-id').value = userData.userId;
+    const nameInput = document.getElementById('edit-name');
+    const emailInput = document.getElementById('edit-email');
+    const roleSelect = document.getElementById('edit-role');
+    const phoneInput = document.getElementById('edit-phone');
+    const userIdInput = document.getElementById('edit-user-id');
+    
+    if (nameInput) nameInput.value = userData.name || '';
+    if (emailInput) emailInput.value = userData.email || '';
+    if (roleSelect) roleSelect.value = userData.role || 'teacher';
+    if (phoneInput) phoneInput.value = userData.phone || '';
+    if (userIdInput) userIdInput.value = userData.userId || '';
     
     // Set form action
-    document.getElementById('edit-user-form').action = `/edit_user/${userData.userId}`;
+    const form = document.getElementById('edit-user-form');
+    if (form) form.action = `/edit_user/${userData.userId}`;
     
     // Set checkboxes
-    document.querySelectorAll('input[name="grades"]').forEach(checkbox => {
-        checkbox.checked = userData.grades.includes(parseInt(checkbox.value));
+    document.querySelectorAll('#edit-user-modal input[name="grades"]').forEach(checkbox => {
+        checkbox.checked = (userData.grades || []).includes(parseInt(checkbox.value));
     });
-    document.querySelectorAll('input[name="subjects"]').forEach(checkbox => {
-        checkbox.checked = userData.subjects.includes(parseInt(checkbox.value));
+    
+    document.querySelectorAll('#edit-user-modal input[name="subjects"]').forEach(checkbox => {
+        checkbox.checked = (userData.subjects || []).includes(parseInt(checkbox.value));
     });
-    document.querySelectorAll('input[name="schools"]').forEach(checkbox => {
-        checkbox.checked = userData.schools.includes(parseInt(checkbox.value));
+    
+    document.querySelectorAll('#edit-user-modal input[name="schools"]').forEach(checkbox => {
+        checkbox.checked = (userData.schools || []).includes(parseInt(checkbox.value));
     });
     
     // Update UI
-    updateValidationUI('edit-');
-    updateCounters('edit-');
+    updateFieldUI('edit-name', '');
+    updateFieldUI('edit-email', '');
+    updateFieldUI('edit-phone', '');
+    updatePhoneHint('edit-', !!userData.phone);
+    updateCounter('edit-grades-counter', userData.grades);
+    updateCounter('edit-subjects-counter', userData.subjects);
+    updateCounter('edit-schools-counter', userData.schools);
+    
+    // Check form validity
+    checkFormValidity('edit-');
 }
 
-// Form Submission Functions
-function submitAddUserForm(event) {
+// Handle form submission
+function submitForm(event, formPrefix) {
     event.preventDefault();
     
-    // Validate all fields
-    validateName(addUserForm, addUserForm.formData.name);
-    validateEmail(addUserForm, addUserForm.formData.email);
-    validatePhone(addUserForm, addUserForm.formData.phone);
+    const form = formPrefix === 'edit-' ? editUserForm : addUserForm;
     
-    // Update UI
-    updateValidationUI('');
+    // Validate all fields
+    form.errors.name = validateName(form.formData.name);
+    form.errors.email = validateEmail(form.formData.email);
+    form.errors.phone = validatePhone(form.formData.phone);
+    
+    // Update UI with validation results
+    updateFieldUI(`${formPrefix}name`, form.errors.name);
+    updateFieldUI(`${formPrefix}email`, form.errors.email);
+    updateFieldUI(`${formPrefix}phone`, form.errors.phone);
     
     // Check if form is valid
-    if (!isFormValid(addUserForm)) {
+    if (!checkFormValidity(formPrefix)) {
         return;
     }
     
     // Set submitting state
-    addUserForm.isSubmitting = true;
-    updateValidationUI('');
+    form.isSubmitting = true;
+    updateSubmitButton(formPrefix, true);
     
     // Submit the form
-    document.getElementById('add-user-form').submit();
+    const formId = formPrefix === 'edit-' ? 'edit-user-form' : 'add-user-form';
+    document.getElementById(formId).submit();
 }
 
-function submitEditUserForm(event) {
-    event.preventDefault();
-    
-    // Validate all fields
-    validateName(editUserForm, editUserForm.formData.name);
-    validateEmail(editUserForm, editUserForm.formData.email);
-    validatePhone(editUserForm, editUserForm.formData.phone);
-    
-    // Update UI
-    updateValidationUI('edit-');
-    
-    // Check if form is valid
-    if (!isFormValid(editUserForm)) {
-        return;
-    }
-    
-    // Set submitting state
-    editUserForm.isSubmitting = true;
-    updateValidationUI('edit-');
-    
-    // Submit the form
-    document.getElementById('edit-user-form').submit();
-}
-
-// Initialize Event Listeners
+// Initialize event listeners
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize Bootstrap modals
     addUserModal = new bootstrap.Modal(document.getElementById('add-user-modal'));
     editUserModal = new bootstrap.Modal(document.getElementById('edit-user-modal'));
     deleteUserModal = new bootstrap.Modal(document.getElementById('delete-user-modal'));
-
+    
     // Add User Modal
     const addUserBtn = document.getElementById('add-user-btn');
-    const addUserForm = document.getElementById('add-user-form');
+    const addUserFormElement = document.getElementById('add-user-form');
     const addUserCloseBtn = document.querySelector('#add-user-modal .btn-close');
     const addUserCancelBtn = document.querySelector('#add-user-modal .btn-secondary');
     
@@ -383,12 +353,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const emailInput = document.getElementById('email');
     const roleSelect = document.getElementById('role');
     const phoneInput = document.getElementById('phone');
-    const gradeCheckboxes = document.querySelectorAll('input[name="grades"]');
-    const subjectCheckboxes = document.querySelectorAll('input[name="subjects"]');
-    const schoolCheckboxes = document.querySelectorAll('input[name="schools"]');
     
     // Edit User Modal
-    const editUserForm = document.getElementById('edit-user-form');
+    const editUserFormElement = document.getElementById('edit-user-form');
     const editUserCloseBtn = document.querySelector('#edit-user-modal .btn-close');
     const editUserCancelBtn = document.querySelector('#edit-user-modal .btn-secondary');
     
@@ -397,9 +364,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const editEmailInput = document.getElementById('edit-email');
     const editRoleSelect = document.getElementById('edit-role');
     const editPhoneInput = document.getElementById('edit-phone');
-    const editGradeCheckboxes = document.querySelectorAll('#edit-user-modal input[name="grades"]');
-    const editSubjectCheckboxes = document.querySelectorAll('#edit-user-modal input[name="subjects"]');
-    const editSchoolCheckboxes = document.querySelectorAll('#edit-user-modal input[name="schools"]');
     
     // Delete User Modal
     const deleteButtons = document.querySelectorAll('.delete-btn');
@@ -408,156 +372,212 @@ document.addEventListener('DOMContentLoaded', function() {
     const deleteUserForm = document.getElementById('delete-user-form');
     
     // Add User Button Click
-    addUserBtn.addEventListener('click', () => {
-        resetAddUserForm();
-        addUserModal.show();
-    });
+    if (addUserBtn) {
+        addUserBtn.addEventListener('click', () => {
+            resetForm('');
+            addUserModal.show();
+        });
+    }
     
     // Add User Form Submit
-    addUserForm.addEventListener('submit', submitAddUserForm);
+    if (addUserFormElement) {
+        addUserFormElement.addEventListener('submit', (event) => submitForm(event, ''));
+    }
     
     // Add User Form Close/Cancel
-    addUserCloseBtn.addEventListener('click', resetAddUserForm);
-    addUserCancelBtn.addEventListener('click', resetAddUserForm);
+    if (addUserCloseBtn) addUserCloseBtn.addEventListener('click', () => resetForm(''));
+    if (addUserCancelBtn) addUserCancelBtn.addEventListener('click', () => resetForm(''));
     
     // Add User Form Input Events
-    nameInput.addEventListener('input', (e) => {
-        addUserForm.formData.name = e.target.value;
-        validateName(addUserForm, e.target.value);
-        updateValidationUI('');
-    });
+    if (nameInput) {
+        nameInput.addEventListener('input', (e) => {
+            addUserForm.formData.name = e.target.value;
+            addUserForm.errors.name = validateName(e.target.value);
+            updateFieldUI('name', addUserForm.errors.name);
+            checkFormValidity('');
+        });
+    }
     
-    emailInput.addEventListener('input', (e) => {
-        addUserForm.formData.email = e.target.value;
-        validateEmail(addUserForm, e.target.value);
-        updateValidationUI('');
-    });
+    if (emailInput) {
+        emailInput.addEventListener('input', (e) => {
+            addUserForm.formData.email = e.target.value;
+            addUserForm.errors.email = validateEmail(e.target.value);
+            updateFieldUI('email', addUserForm.errors.email);
+            checkFormValidity('');
+        });
+    }
     
-    roleSelect.addEventListener('change', (e) => {
-        addUserForm.formData.role = e.target.value;
-    });
+    if (roleSelect) {
+        roleSelect.addEventListener('change', (e) => {
+            addUserForm.formData.role = e.target.value;
+        });
+    }
     
-    phoneInput.addEventListener('input', (e) => {
-        addUserForm.formData.phone = e.target.value;
-        validatePhone(addUserForm, e.target.value);
-        updateValidationUI('');
-    });
+    if (phoneInput) {
+        phoneInput.addEventListener('input', (e) => {
+            addUserForm.formData.phone = e.target.value;
+            addUserForm.errors.phone = validatePhone(e.target.value);
+            updateFieldUI('phone', addUserForm.errors.phone);
+            
+            // Format phone number if valid
+            if (!addUserForm.errors.phone && e.target.value) {
+                const formattedPhone = formatPhone(e.target.value);
+                if (formattedPhone !== e.target.value) {
+                    e.target.value = formattedPhone;
+                    addUserForm.formData.phone = formattedPhone;
+                }
+            }
+            
+            updatePhoneHint('', !!e.target.value);
+            checkFormValidity('');
+        });
+    }
     
     // Add User Form Checkbox Events
-    gradeCheckboxes.forEach(checkbox => {
+    document.querySelectorAll('input[name="grades"]').forEach(checkbox => {
         checkbox.addEventListener('change', (e) => {
             if (e.target.checked) {
                 addUserForm.formData.grades.push(parseInt(e.target.value));
             } else {
                 addUserForm.formData.grades = addUserForm.formData.grades.filter(id => id !== parseInt(e.target.value));
             }
-            updateCounters('');
+            updateCounter('grades-counter', addUserForm.formData.grades);
+            checkFormValidity('');
         });
     });
     
-    subjectCheckboxes.forEach(checkbox => {
+    document.querySelectorAll('input[name="subjects"]').forEach(checkbox => {
         checkbox.addEventListener('change', (e) => {
             if (e.target.checked) {
                 addUserForm.formData.subjects.push(parseInt(e.target.value));
             } else {
                 addUserForm.formData.subjects = addUserForm.formData.subjects.filter(id => id !== parseInt(e.target.value));
             }
-            updateCounters('');
+            updateCounter('subjects-counter', addUserForm.formData.subjects);
+            checkFormValidity('');
         });
     });
     
-    schoolCheckboxes.forEach(checkbox => {
+    document.querySelectorAll('input[name="schools"]').forEach(checkbox => {
         checkbox.addEventListener('change', (e) => {
             if (e.target.checked) {
                 addUserForm.formData.schools.push(parseInt(e.target.value));
+                
                 // For backward compatibility
-                if (addUserForm.formData.schools.length === 1) {
-                    addUserForm.formData.school_id = e.target.value;
-                }
+                document.getElementById('school_id').value = e.target.value;
             } else {
                 addUserForm.formData.schools = addUserForm.formData.schools.filter(id => id !== parseInt(e.target.value));
+                
                 // For backward compatibility
                 if (addUserForm.formData.schools.length === 0) {
-                    addUserForm.formData.school_id = '';
+                    document.getElementById('school_id').value = '';
                 } else {
-                    addUserForm.formData.school_id = addUserForm.formData.schools[0].toString();
+                    document.getElementById('school_id').value = addUserForm.formData.schools[0].toString();
                 }
             }
-            updateCounters('');
+            updateCounter('schools-counter', addUserForm.formData.schools);
+            checkFormValidity('');
         });
     });
     
     // Edit User Form Submit
-    editUserForm.addEventListener('submit', submitEditUserForm);
+    if (editUserFormElement) {
+        editUserFormElement.addEventListener('submit', (event) => submitForm(event, 'edit-'));
+    }
     
     // Edit User Form Close/Cancel
-    editUserCloseBtn.addEventListener('click', resetEditUserForm);
-    editUserCancelBtn.addEventListener('click', resetEditUserForm);
+    if (editUserCloseBtn) editUserCloseBtn.addEventListener('click', () => resetForm('edit-'));
+    if (editUserCancelBtn) editUserCancelBtn.addEventListener('click', () => resetForm('edit-'));
     
     // Edit User Form Input Events
-    editNameInput.addEventListener('input', (e) => {
-        editUserForm.formData.name = e.target.value;
-        validateName(editUserForm, e.target.value);
-        updateValidationUI('edit-');
-    });
+    if (editNameInput) {
+        editNameInput.addEventListener('input', (e) => {
+            editUserForm.formData.name = e.target.value;
+            editUserForm.errors.name = validateName(e.target.value);
+            updateFieldUI('edit-name', editUserForm.errors.name);
+            checkFormValidity('edit-');
+        });
+    }
     
-    editEmailInput.addEventListener('input', (e) => {
-        editUserForm.formData.email = e.target.value;
-        validateEmail(editUserForm, e.target.value);
-        updateValidationUI('edit-');
-    });
+    if (editEmailInput) {
+        editEmailInput.addEventListener('input', (e) => {
+            editUserForm.formData.email = e.target.value;
+            editUserForm.errors.email = validateEmail(e.target.value);
+            updateFieldUI('edit-email', editUserForm.errors.email);
+            checkFormValidity('edit-');
+        });
+    }
     
-    editRoleSelect.addEventListener('change', (e) => {
-        editUserForm.formData.role = e.target.value;
-    });
+    if (editRoleSelect) {
+        editRoleSelect.addEventListener('change', (e) => {
+            editUserForm.formData.role = e.target.value;
+        });
+    }
     
-    editPhoneInput.addEventListener('input', (e) => {
-        editUserForm.formData.phone = e.target.value;
-        validatePhone(editUserForm, e.target.value);
-        updateValidationUI('edit-');
-    });
+    if (editPhoneInput) {
+        editPhoneInput.addEventListener('input', (e) => {
+            editUserForm.formData.phone = e.target.value;
+            editUserForm.errors.phone = validatePhone(e.target.value);
+            updateFieldUI('edit-phone', editUserForm.errors.phone);
+            
+            // Format phone number if valid
+            if (!editUserForm.errors.phone && e.target.value) {
+                const formattedPhone = formatPhone(e.target.value);
+                if (formattedPhone !== e.target.value) {
+                    e.target.value = formattedPhone;
+                    editUserForm.formData.phone = formattedPhone;
+                }
+            }
+            
+            updatePhoneHint('edit-', !!e.target.value);
+            checkFormValidity('edit-');
+        });
+    }
     
     // Edit User Form Checkbox Events
-    editGradeCheckboxes.forEach(checkbox => {
+    document.querySelectorAll('#edit-user-modal input[name="grades"]').forEach(checkbox => {
         checkbox.addEventListener('change', (e) => {
             if (e.target.checked) {
                 editUserForm.formData.grades.push(parseInt(e.target.value));
             } else {
                 editUserForm.formData.grades = editUserForm.formData.grades.filter(id => id !== parseInt(e.target.value));
             }
-            updateCounters('edit-');
+            updateCounter('edit-grades-counter', editUserForm.formData.grades);
+            checkFormValidity('edit-');
         });
     });
     
-    editSubjectCheckboxes.forEach(checkbox => {
+    document.querySelectorAll('#edit-user-modal input[name="subjects"]').forEach(checkbox => {
         checkbox.addEventListener('change', (e) => {
             if (e.target.checked) {
                 editUserForm.formData.subjects.push(parseInt(e.target.value));
             } else {
                 editUserForm.formData.subjects = editUserForm.formData.subjects.filter(id => id !== parseInt(e.target.value));
             }
-            updateCounters('edit-');
+            updateCounter('edit-subjects-counter', editUserForm.formData.subjects);
+            checkFormValidity('edit-');
         });
     });
     
-    editSchoolCheckboxes.forEach(checkbox => {
+    document.querySelectorAll('#edit-user-modal input[name="schools"]').forEach(checkbox => {
         checkbox.addEventListener('change', (e) => {
             if (e.target.checked) {
                 editUserForm.formData.schools.push(parseInt(e.target.value));
+                
                 // For backward compatibility
-                if (editUserForm.formData.schools.length === 1) {
-                    editUserForm.formData.school_id = e.target.value;
-                }
+                document.getElementById('edit-school_id').value = e.target.value;
             } else {
                 editUserForm.formData.schools = editUserForm.formData.schools.filter(id => id !== parseInt(e.target.value));
+                
                 // For backward compatibility
                 if (editUserForm.formData.schools.length === 0) {
-                    editUserForm.formData.school_id = '';
+                    document.getElementById('edit-school_id').value = '';
                 } else {
-                    editUserForm.formData.school_id = editUserForm.formData.schools[0].toString();
+                    document.getElementById('edit-school_id').value = editUserForm.formData.schools[0].toString();
                 }
             }
-            updateCounters('edit-');
+            updateCounter('edit-schools-counter', editUserForm.formData.schools);
+            checkFormValidity('edit-');
         });
     });
     
@@ -571,29 +591,21 @@ document.addEventListener('DOMContentLoaded', function() {
             const userEmail = button.dataset.userEmail;
             const userRole = button.dataset.userRole;
             const userPhone = button.dataset.userPhone;
-            const userSchoolId = button.dataset.userSchoolId;
-
+            
             // Get the user's grades, subjects, and schools from data attributes
             let userGrades = [];
             let userSubjects = [];
             let userSchools = [];
-
+            
             try {
                 // Parse the JSON data from the data attributes
                 userGrades = JSON.parse(button.dataset.userGrades || '[]');
                 userSubjects = JSON.parse(button.dataset.userSubjects || '[]');
-                
-                // For backward compatibility, if schools data attribute exists, use it
-                // otherwise create a single-item array with the school_id if it exists
-                if (button.dataset.userSchools) {
-                    userSchools = JSON.parse(button.dataset.userSchools || '[]');
-                } else if (button.dataset.userSchoolId) {
-                    userSchools = [parseInt(button.dataset.userSchoolId)];
-                }
+                userSchools = JSON.parse(button.dataset.userSchools || '[]');
             } catch (e) {
                 console.error('Error parsing grades, subjects, or schools:', e);
             }
-
+            
             // Set the user data
             setUserData({
                 userId: userId,
@@ -601,12 +613,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 email: userEmail,
                 role: userRole,
                 phone: userPhone || '',
-                school_id: userSchoolId || '',
                 grades: userGrades,
                 subjects: userSubjects,
                 schools: userSchools
             });
-
+            
             // Show the modal
             editUserModal.show();
         });
@@ -617,16 +628,25 @@ document.addEventListener('DOMContentLoaded', function() {
         button.addEventListener('click', () => {
             const userId = button.dataset.userId;
             const userName = button.dataset.userName;
-
+            
             // Populate modal with user details
             deleteUserId.value = userId;
             deleteUserName.textContent = userName;
-
+            
             // Dynamically set the form action
             deleteUserForm.action = `/delete_user/${userId}`;
-
+            
             // Show the modal
             deleteUserModal.show();
         });
     });
+    
+    // Initialize form state
+    resetForm('');
+    
+    // Check if we need to pre-populate the edit form (e.g., if opened directly)
+    const editUserId = document.getElementById('edit-user-id');
+    if (editUserId && editUserId.value) {
+        checkFormValidity('edit-');
+    }
 });
