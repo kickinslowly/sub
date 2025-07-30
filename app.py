@@ -1770,59 +1770,90 @@ def accept_sub_request(token):
 @app.route('/add_user', methods=['POST'])
 @limiter.limit("10 per minute")
 def add_user():
-    # Get form data
-    name = request.form.get('name')
-    email = request.form.get('email')
-    role = request.form.get('role')
-    phone = request.form.get('phone')
+    try:
+        # Get form data
+        name = request.form.get('name')
+        email = request.form.get('email')
+        role = request.form.get('role')
+        phone = request.form.get('phone')
 
-    # Collect multiple grades, subjects, and schools from checkboxes
-    grade_ids = request.form.getlist('grades')  # List of selected grade IDs
-    subject_ids = request.form.getlist('subjects')  # List of selected subject IDs
-    school_ids = request.form.getlist('schools')  # List of selected school IDs
+        # Log the form data for debugging
+        logger.info(f"Add user form data: name={name}, email={email}, role={role}, phone={phone}")
 
-    # Validate required inputs
-    if not name or not email or not role:
-        flash('All fields (name, email, role) are required!')
+        # Collect multiple grades, subjects, and schools from checkboxes
+        grade_ids = request.form.getlist('grades')  # List of selected grade IDs
+        subject_ids = request.form.getlist('subjects')  # List of selected subject IDs
+        school_ids = request.form.getlist('schools')  # List of selected school IDs
+
+        # Log the selected IDs for debugging
+        logger.info(f"Selected IDs: grades={grade_ids}, subjects={subject_ids}, schools={school_ids}")
+
+        # Validate required inputs
+        if not name or not email or not role:
+            flash('All fields (name, email, role) are required!')
+            return redirect(url_for('manage_users'))
+
+        # Validate role
+        if role not in ['teacher', 'substitute']:
+            flash('Invalid role specified!')
+            return redirect(url_for('manage_users'))
+
+        # Check for duplicate email
+        existing_user = User.query.filter_by(email=email).first()
+        if existing_user:
+            flash('A user with this email already exists!')
+            return redirect(url_for('manage_users'))
+
+        try:
+            # Fetch grade, subject, and school objects
+            grade_objs = Grade.query.filter(Grade.id.in_(grade_ids)).all() if grade_ids else []
+            subject_objs = Subject.query.filter(Subject.id.in_(subject_ids)).all() if subject_ids else []
+            school_objs = School.query.filter(School.id.in_(school_ids)).all() if school_ids else []
+
+            # Log the fetched objects for debugging
+            logger.info(f"Fetched objects: grades={len(grade_objs)}, subjects={len(subject_objs)}, schools={len(school_objs)}")
+
+            # Get the current user to get their organization_id
+            current_user = get_logged_in_user()
+            
+            # Create the new user
+            new_user = User(
+                name=name,
+                email=email,
+                role=role,
+                phone=phone,
+                organization_id=current_user.organization_id if current_user else None,
+                created_by=current_user.id if current_user else None
+            )
+            
+            # Log the organization_id for debugging
+            logger.info(f"Setting organization_id={current_user.organization_id if current_user else None} for new user")
+
+            # Assign grades, subjects, and schools to the new user
+            new_user.grades.extend(grade_objs)  # Add all selected grades
+            new_user.subjects.extend(subject_objs)  # Add all selected subjects
+            new_user.schools.extend(school_objs)  # Add all selected schools
+
+            # Add and commit changes to the database
+            db.session.add(new_user)
+            db.session.commit()
+
+            # Flash a success message
+            flash(f'User {name} ({email}) added successfully!')
+            logger.info(f"User {name} ({email}) added successfully with ID {new_user.id}")
+
+            return redirect(url_for('manage_users'))
+
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Database error in add_user: {e}")
+            flash('An error occurred while adding the user. Please try again.')
+            return redirect(url_for('manage_users'))
+
+    except Exception as e:
+        logger.error(f"Unexpected error in add_user: {e}")
+        flash('An unexpected error occurred. Please try again.')
         return redirect(url_for('manage_users'))
-
-    # Validate role
-    if role not in ['teacher', 'substitute']:
-        flash('Invalid role specified!')
-        return redirect(url_for('manage_users'))
-
-    # Check for duplicate email
-    existing_user = User.query.filter_by(email=email).first()
-    if existing_user:
-        flash('A user with this email already exists!')
-        return redirect(url_for('manage_users'))
-
-    # Fetch grade, subject, and school objects
-    grade_objs = Grade.query.filter(Grade.id.in_(grade_ids)).all()
-    subject_objs = Subject.query.filter(Subject.id.in_(subject_ids)).all()
-    school_objs = School.query.filter(School.id.in_(school_ids)).all()
-
-    # Create the new user
-    new_user = User(
-        name=name,
-        email=email,
-        role=role,
-        phone=phone
-    )
-
-    # Assign grades, subjects, and schools to the new user
-    new_user.grades.extend(grade_objs)  # Add all selected grades
-    new_user.subjects.extend(subject_objs)  # Add all selected subjects
-    new_user.schools.extend(school_objs)  # Add all selected schools
-
-    # Add and commit changes to the database
-    db.session.add(new_user)
-    db.session.commit()
-
-    # Flash a success message
-    flash(f'User {name} ({email}) added successfully!')
-
-    return redirect(url_for('manage_users'))
 
 
 @app.route('/edit_user/<int:user_id>', methods=['POST'])
