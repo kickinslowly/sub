@@ -1433,8 +1433,15 @@ def manage_admins():
     # Get all level 2 admins (filtered by organization)
     admins = filter_by_organization(User.query, User).filter_by(role='admin_l2').order_by(User.name).all()
     
-    # Fetch schools from the database (filtered by organization)
-    schools = filter_by_organization(School.query, School).order_by(School.name.asc()).all()
+    # Fetch schools from the database (include org-matching and legacy NULL-org schools owned by this L1)
+    logged_in_user = get_logged_in_user()
+    schools_query = School.query
+    if logged_in_user and logged_in_user.organization_id:
+        schools_query = schools_query.filter(
+            (School.organization_id == logged_in_user.organization_id) |
+            ((School.organization_id == None) & (School.level1_admin_id == logged_in_user.id))
+        )
+    schools = schools_query.order_by(School.name.asc()).all()
     
     return render_template(
         'manage_admins.html',
@@ -1456,9 +1463,16 @@ def add_admin():
     phone = request.form.get('phone')
     admin_type = request.form.get('admin_type', 'front_office')  # front_office or principal
     
-    # Get selected schools (filtered by organization)
+    # Get selected schools (include org-matching and legacy NULL-org schools owned by this L1)
     school_ids = request.form.getlist('schools')  # List of selected school IDs
-    school_objs = filter_by_organization(School.query, School).filter(School.id.in_(school_ids)).all()
+    current_user = get_logged_in_user()
+    schools_query = School.query
+    if current_user and current_user.organization_id:
+        schools_query = schools_query.filter(
+            (School.organization_id == current_user.organization_id) |
+            ((School.organization_id == None) & (School.level1_admin_id == current_user.id))
+        )
+    school_objs = schools_query.filter(School.id.in_(school_ids)).all()
     
     # Validate required inputs
     if not name or not email:
@@ -2205,7 +2219,8 @@ def manage_schools():
             new_school = School(
                 name=school_name,
                 code=school_code,
-                level1_admin_id=logged_in_user.id  # Associate with the current level 1 admin
+                level1_admin_id=logged_in_user.id,  # Associate with the current level 1 admin
+                organization_id=logged_in_user.organization_id  # Ensure school is linked to the L1 admin's organization
             )
             
             db.session.add(new_school)
@@ -2238,6 +2253,9 @@ def edit_school(school_id):
     # Get the school to edit
     school = School.query.get_or_404(school_id)
     
+    # Get the logged-in user
+    logged_in_user = get_logged_in_user()
+    
     # Get form data
     school_name = request.form.get('school_name')
     school_code = request.form.get('school_code')
@@ -2264,6 +2282,10 @@ def edit_school(school_id):
         # Update school
         school.name = school_name
         school.code = school_code
+        
+        # Backfill organization_id if missing
+        if not school.organization_id and logged_in_user and logged_in_user.organization_id:
+            school.organization_id = logged_in_user.organization_id
         
         db.session.commit()
         
